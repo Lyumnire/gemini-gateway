@@ -66,10 +66,13 @@ def update_env(psid: str, psidts: str) -> bool:
 
 
 def restart_backend() -> None:
+    # 注意：docker restart 不会重新读取 .env（环境变量在容器创建时固化），
+    # 必须用 compose force-recreate 才能让新 Cookie 生效
     try:
-        subprocess.run([DOCKER, "restart", BACKEND_CONTAINER],
-                       check=True, timeout=60, capture_output=True)
-        log("后端容器已重启")
+        subprocess.run(["/usr/local/bin/docker", "compose", "-f", str(ROOT / "docker-compose.yml"),
+                        "up", "-d", "--force-recreate", BACKEND_CONTAINER],
+                       check=True, timeout=120, capture_output=True, cwd=str(ROOT))
+        log("后端容器已重建（新 Cookie 生效）")
     except Exception as e:  # noqa: BLE001
         log(f"重启后端失败: {e}")
 
