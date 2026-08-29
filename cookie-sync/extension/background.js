@@ -56,3 +56,14 @@ chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === 'sync') sync('alarm');
 });
 sync('worker-start');
+
+// 模型令牌配置：转发给接收服务（用于自动更新 GEMINI_MODEL_ALIASES）
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === 'GG_MODEL_CONFIG' && Array.isArray(msg.chunks)) {
+    fetch(RECEIVER_URL.replace('/cookies', '/models-config'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Token': TOKEN },
+      body: JSON.stringify({ chunks: msg.chunks }),
+    }).catch(() => {});
+  }
+});

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMode, Conversation, ResearchState, StoredMessage } from './types';
+import type { Conversation, ResearchState, StoredMessage } from './types';
 import { ApiError } from './types';
 import {
   buildContent,
@@ -24,6 +24,7 @@ import {
   saveUiMode,
   titleFrom,
   type ThemeMode,
+  type UiMode,
 } from './lib/storage';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
@@ -40,7 +41,8 @@ export default function App() {
   const [model, setModel] = useState<string>(() => loadModel(FALLBACK_MODELS[0]));
   const [models, setModels] = useState<string[]>(FALLBACK_MODELS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [mode, setMode] = useState<ChatMode>(loadUiMode);
+  const [uiMode, setUiMode] = useState<UiMode>(loadUiMode);
+  const [imageTool, setImageTool] = useState(false);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -317,16 +319,25 @@ export default function App() {
 
   const handleSend = useCallback(
     (text: string, images: string[]) => {
-      if (mode === 'image') sendImage(text);
-      else if (mode === 'research') sendResearch(text);
+      if (imageTool) sendImage(text);
+      else if (uiMode === 'research') sendResearch(text);
       else sendMessage(text, images);
     },
-    [mode, sendImage, sendResearch, sendMessage],
+    [imageTool, uiMode, sendImage, sendResearch, sendMessage],
   );
 
-  const handleModeChange = useCallback((m: ChatMode) => {
-    setMode(m);
+  const handleUiModeChange = useCallback((m: UiMode) => {
+    setUiMode(m);
     saveUiMode(m);
+  }, []);
+
+  const handleImageToolChange = useCallback((on: boolean) => {
+    setImageTool(on);
+    if (on) {
+      // 生图是"对话"里的工具，开启时切回对话页签
+      setUiMode('chat');
+      saveUiMode('chat');
+    }
   }, []);
 
   const handleNew = useCallback(() => {
@@ -379,16 +390,18 @@ export default function App() {
       />
       <ChatView
         conversation={active}
-        mode={mode}
+        uiMode={uiMode}
+        imageTool={imageTool}
         model={model}
         models={models}
         busy={busy}
-        onModeChange={handleModeChange}
+        onUiModeChange={handleUiModeChange}
+        onImageToolChange={handleImageToolChange}
         onModelChange={handleModelChange}
         onOpenSidebar={() => setSidebarOpen(true)}
         onSend={handleSend}
         onStop={stop}
-        onRetry={mode === 'chat' ? retryLast : undefined}
+        onRetry={uiMode === 'chat' && !imageTool ? retryLast : undefined}
       />
     </div>
   );

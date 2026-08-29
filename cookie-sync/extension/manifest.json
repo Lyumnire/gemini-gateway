@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Gemini Gateway Cookie Sync",
-  "version": "1.0.0",
-  "description": "自动将本机 gemini.google.com 的登录 Cookie 同步到私人网关（仅本机回环）",
+  "version": "2.0.0",
+  "description": "自动将本机 gemini.google.com 的登录 Cookie 与模型令牌同步到私人网关（仅本机回环）",
   "permissions": ["cookies", "alarms", "storage"],
   "host_permissions": [
     "https://gemini.google.com/*",
@@ -10,5 +10,18 @@
   ],
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["main-world.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["relay.js"],
+      "run_at": "document_start"
+    }
+  ]
 }

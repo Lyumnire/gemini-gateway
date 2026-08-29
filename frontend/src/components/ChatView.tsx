@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMode, Conversation } from '../types';
+import type { Conversation } from '../types';
+import type { UiMode } from '../lib/storage';
 import MessageBubble from './MessageBubble';
 import Composer from './Composer';
 import { ChevronDownIcon, MenuIcon, SparkIcon } from './icons';
 
 interface Props {
   conversation: Conversation;
-  mode: ChatMode;
+  uiMode: UiMode;
+  imageTool: boolean;
   model: string;
   models: string[];
   busy: boolean;
-  onModeChange: (m: ChatMode) => void;
+  onUiModeChange: (m: UiMode) => void;
+  onImageToolChange: (on: boolean) => void;
   onModelChange: (m: string) => void;
   onOpenSidebar: () => void;
   onSend: (text: string, images: string[]) => void;
@@ -18,7 +21,7 @@ interface Props {
   onRetry?: () => void;
 }
 
-const SUGGESTIONS: Record<ChatMode, string[]> = {
+const SUGGESTIONS: Record<'chat' | 'image' | 'research', string[]> = {
   chat: [
     '用通俗易懂的方式解释一下量子纠缠',
     '帮我写一首关于秋天的现代诗',
@@ -41,11 +44,13 @@ const SUGGESTIONS: Record<ChatMode, string[]> = {
 
 export default function ChatView({
   conversation,
-  mode,
+  uiMode,
+  imageTool,
   model,
   models,
   busy,
-  onModeChange,
+  onUiModeChange,
+  onImageToolChange,
   onModelChange,
   onOpenSidebar,
   onSend,
@@ -98,7 +103,7 @@ export default function ChatView({
           <MenuIcon />
         </button>
         <h1 className="min-w-0 flex-1 truncate px-1 text-[15px] font-semibold">{conversation.title}</h1>
-        {mode === 'chat' && (
+        {uiMode === 'chat' && !imageTool && (
           <select
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
@@ -124,9 +129,9 @@ export default function ChatView({
           <div className="flex h-full flex-col items-center justify-center gap-4 pb-16 text-center">
             <div
               className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg ${
-                mode === 'image'
+                imageTool
                   ? 'bg-gradient-to-br from-fuchsia-500 to-purple-600'
-                  : mode === 'research'
+                  : uiMode === 'research'
                     ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
                     : 'bg-gradient-to-br from-indigo-500 to-violet-600'
               }`}
@@ -135,18 +140,18 @@ export default function ChatView({
             </div>
             <div>
               <p className="text-lg font-semibold">
-                {mode === 'image' ? '描述你想要的画面' : mode === 'research' ? '想深入研究什么？' : '有什么可以帮你？'}
+                {imageTool ? '描述你想要的画面' : uiMode === 'research' ? '想深入研究什么？' : '有什么可以帮你？'}
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                {mode === 'image'
+                {imageTool
                   ? '生成结果以图片形式展示'
-                  : mode === 'research'
+                  : uiMode === 'research'
                     ? '会自动检索多个来源并汇总成报告'
                     : '由 Mac 上的 Gemini 网页版会话驱动'}
               </p>
             </div>
             <div className="grid w-full max-w-md grid-cols-1 gap-2 px-2 sm:grid-cols-2">
-              {SUGGESTIONS[mode].map((s) => (
+              {(imageTool ? SUGGESTIONS.image : SUGGESTIONS[uiMode]).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -185,7 +190,15 @@ export default function ChatView({
         )}
       </div>
 
-      <Composer mode={mode} busy={busy} onModeChange={onModeChange} onSend={onSend} onStop={onStop} />
+      <Composer
+        uiMode={uiMode}
+        imageTool={imageTool}
+        busy={busy}
+        onUiModeChange={onUiModeChange}
+        onImageToolChange={onImageToolChange}
+        onSend={onSend}
+        onStop={onStop}
+      />
     </div>
   );
 }

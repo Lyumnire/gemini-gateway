@@ -1,28 +1,27 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
-import type { ChatMode } from '../types';
-import { CloseIcon, ImageIcon, SendIcon, SparkIcon, StopIcon, TelescopeIcon } from './icons';
+import { CloseIcon, ImageIcon, PlusIcon, SendIcon, SparkIcon, StopIcon, TelescopeIcon } from './icons';
 
 interface Props {
-  mode: ChatMode;
+  uiMode: 'chat' | 'research';
+  imageTool: boolean;
   busy: boolean;
-  onModeChange: (m: ChatMode) => void;
+  onUiModeChange: (m: 'chat' | 'research') => void;
+  onImageToolChange: (on: boolean) => void;
   onSend: (text: string, images: string[]) => void;
   onStop: () => void;
 }
 
 const MAX_IMAGES = 4;
 
-const MODE_META: Record<ChatMode, { label: string; accent: string }> = {
+const MODE_META = {
   chat: { label: '对话', accent: 'bg-indigo-600 hover:bg-indigo-700' },
-  image: { label: '画图', accent: 'bg-fuchsia-600 hover:bg-fuchsia-700' },
   research: { label: '深度研究', accent: 'bg-teal-600 hover:bg-teal-700' },
-};
+} as const;
 
-const MODE_PLACEHOLDER: Record<ChatMode, string> = {
+const PLACEHOLDER = {
   chat: '给 Gemini 发送消息…',
-  image: '描述你想要的画面…',
   research: '想深入研究什么课题？',
-};
+} as const;
 
 async function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -33,20 +32,29 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export default function Composer({ mode, busy, onModeChange, onSend, onStop }: Props) {
+export default function Composer({
+  uiMode,
+  imageTool,
+  busy,
+  onUiModeChange,
+  onImageToolChange,
+  onSend,
+  onStop,
+}: Props) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // 触屏设备上 Enter 换行、按钮发送；桌面 Enter 发送、Shift+Enter 换行
   const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
-  const canSend = (text.trim().length > 0 || (mode === 'chat' && images.length > 0)) && !busy;
+  const canSend = (text.trim().length > 0 || (uiMode === 'chat' && !imageTool && images.length > 0)) && !busy;
 
   const submit = () => {
     if (!canSend) return;
-    onSend(text.trim(), mode === 'chat' ? images : []);
+    onSend(text.trim(), uiMode === 'chat' && !imageTool ? images : []);
     setText('');
     setImages([]);
     requestAnimationFrame(() => textareaRef.current?.focus());
@@ -69,28 +77,62 @@ export default function Composer({ mode, busy, onModeChange, onSend, onStop }: P
     if (fileRef.current) fileRef.current.value = '';
   };
 
+  const accent = imageTool ? 'bg-fuchsia-600 hover:bg-fuchsia-700' : MODE_META[uiMode].accent;
+
   return (
-    <div className="border-t border-slate-200/80 bg-slate-50/90 px-3 pb-[max(0.6rem,var(--safe-bottom))] pt-2 backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/90">
-      {/* 模式切换：每个模式一个"引擎"，颜色即身份 */}
-      <div
-        role="tablist"
-        aria-label="模式"
-        className="mb-2 flex w-fit gap-1 rounded-full bg-slate-200/80 p-1 dark:bg-slate-800"
-      >
-        {(Object.keys(MODE_META) as ChatMode[]).map((m) => {
-          const active = m === mode;
-          const Icon = m === 'chat' ? SparkIcon : m === 'image' ? ImageIcon : TelescopeIcon;
+    <div className="relative border-t border-slate-200/80 bg-slate-50/90 px-3 pb-[max(0.6rem,var(--safe-bottom))] pt-2 backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/90">
+      {/* + 工具菜单 */}
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden />
+          <div className="absolute bottom-full left-3 z-20 mb-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                fileRef.current?.click();
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <ImageIcon className="h-4 w-4 text-slate-400" />
+              上传图片
+              <span className="ml-auto text-[10px] text-slate-400">让 Gemini 看图</span>
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                onUiModeChange('chat');
+                onImageToolChange(!imageTool);
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <SparkIcon className={`h-4 w-4 ${imageTool ? 'text-fuchsia-500' : 'text-slate-400'}`} />
+              {imageTool ? '关闭生成图片' : '生成图片'}
+              <span className="ml-auto text-[10px] text-slate-400">文生图工具</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* 模式与工具状态行 */}
+      <div className="mb-2 flex items-center gap-1.5">
+        {(Object.keys(MODE_META) as (keyof typeof MODE_META)[]).map((m) => {
+          const active = uiMode === m && !imageTool;
+          const Icon = m === 'chat' ? SparkIcon : TelescopeIcon;
           return (
             <button
               key={m}
               type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onModeChange(m)}
-              className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 ${
+              aria-pressed={active}
+              disabled={imageTool}
+              onClick={() => onUiModeChange(m)}
+              className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:opacity-50 ${
                 active
-                  ? 'bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-slate-100'
-                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
+                  : 'text-slate-500 hover:bg-slate-200/70 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -98,9 +140,22 @@ export default function Composer({ mode, busy, onModeChange, onSend, onStop }: P
             </button>
           );
         })}
+        {imageTool && (
+          <span className="flex items-center gap-1 rounded-full bg-fuchsia-100 px-3 py-1.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-950/60 dark:text-fuchsia-300">
+            生成图片
+            <button
+              type="button"
+              aria-label="关闭生成图片"
+              onClick={() => onImageToolChange(false)}
+              className="rounded-full p-0.5 hover:bg-fuchsia-200 dark:hover:bg-fuchsia-900"
+            >
+              <CloseIcon className="h-3 w-3" />
+            </button>
+          </span>
+        )}
       </div>
 
-      {mode === 'chat' && images.length > 0 && (
+      {uiMode === 'chat' && !imageTool && images.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {images.map((src, i) => (
             <div key={i} className="relative">
@@ -119,31 +174,29 @@ export default function Composer({ mode, busy, onModeChange, onSend, onStop }: P
       )}
 
       <div className="flex items-end gap-2">
-        {mode === 'chat' ? (
-          <>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => void pickImages(e.target.files)}
-            />
-            <button
-              type="button"
-              aria-label="添加图片"
-              disabled={busy || images.length >= MAX_IMAGES}
-              onClick={() => fileRef.current?.click()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-200/70 disabled:opacity-40 dark:hover:bg-slate-700"
-            >
-              <ImageIcon />
-            </button>
-          </>
-        ) : (
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center" aria-hidden>
-            <span className={`h-2.5 w-2.5 rounded-full ${mode === 'image' ? 'bg-fuchsia-500' : 'bg-teal-500'}`} />
-          </span>
-        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => void pickImages(e.target.files)}
+        />
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            aria-label="工具菜单"
+            disabled={busy}
+            onClick={() => setMenuOpen((v) => !v)}
+            className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+              menuOpen
+                ? 'bg-slate-700 text-white'
+                : 'text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+            }`}
+          >
+            {menuOpen ? <CloseIcon /> : <PlusIcon />}
+          </button>
+        </div>
 
         <textarea
           ref={textareaRef}
@@ -151,7 +204,7 @@ export default function Composer({ mode, busy, onModeChange, onSend, onStop }: P
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKey}
           rows={1}
-          placeholder={MODE_PLACEHOLDER[mode]}
+          placeholder={imageTool ? '描述你想要的画面…' : PLACEHOLDER[uiMode]}
           className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-[15px] leading-snug outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-900/50"
         />
 
@@ -170,7 +223,7 @@ export default function Composer({ mode, busy, onModeChange, onSend, onStop }: P
             aria-label="发送"
             disabled={!canSend}
             onClick={submit}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow transition-colors disabled:opacity-40 ${MODE_META[mode].accent}`}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow transition-colors disabled:opacity-40 ${accent}`}
           >
             <SendIcon className="h-4 w-4" />
           </button>
