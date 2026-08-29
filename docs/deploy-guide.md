@@ -22,7 +22,14 @@
 7. **查看地址**：`./scripts/url.sh` → `https://xxxx.trycloudflare.com`，
    账号 `admin` + 生成的密码。
 
-## 二、获取 Cookie（唯一需要手工做的步骤）
+## 二、获取 Cookie（推荐：装一次自动同步扩展，之后零人工）
+
+**自动方式（推荐）**：运行 `./scripts/install-cookie-sync.sh` 并按提示把
+`cookie-sync/extension-dist` 加载进 Chrome/Edge（3 次点击），之后打开
+gemini.google.com 时 Cookie 会自动推送到网关——彻底过期后重新登录也会
+自动恢复，无需任何手工操作。详见 `cookie-sync/README.md`。
+
+**手动方式**（未装扩展或临时排查时）：
 
 1. Mac 浏览器打开并登录 <https://gemini.google.com>（走 Clash，确认能正常对话）。
 2. 按 `F12` 打开开发者工具 → **应用 / Application** → 存储 → **Cookie** →
