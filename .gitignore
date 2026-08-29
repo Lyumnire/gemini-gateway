@@ -1,0 +1,17 @@
+# 敏感信息：绝不提交
+.env
+data/
+*.cookie
+cookies*
+
+# 依赖与构建产物
+frontend/node_modules/
+frontend/dist/
+dev-dist/
+
+# 系统文件
+.DS_Store
+*.log
+
+# vendor 的上游源码（其自身是 git 仓库，不纳入本项目版本管理）
+backend/src/

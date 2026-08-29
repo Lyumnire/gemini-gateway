@@ -1,0 +1,37 @@
+{
+	admin off
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:80 {
+	# 全站密码认证（浏览器弹出账号密码框）
+	# 密码哈希由 scripts/gen_env.py 直接写入下方 GATEWAY_PASSWORD_HASH_BCRYPT 位置
+	# （不走环境变量：compose 会把 bcrypt 哈希中的 $ 误当变量插值）
+	basic_auth {
+		{$GATEWAY_USER} $2a$14$aPF/Rd9mQBRHjiLofN5TjOfACAkz3tn2OtCnz.BZPKQuopbums5fS
+	}
+
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
+	@api path /openai/* /claude/* /gemini/* /health /docs /openapi.json
+	handle @api {
+		reverse_proxy gemini-api:4981
+	}
+
+	# React 前端静态文件（SPA 回退到 index.html）
+	handle {
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
+	}
+}

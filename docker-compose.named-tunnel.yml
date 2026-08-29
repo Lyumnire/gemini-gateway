@@ -1,0 +1,13 @@
+# 固定域名隧道 override（命名隧道）
+# 前置条件：在 .env 中填入 TUNNEL_TOKEN（Cloudflare Zero Trust → Networks → Tunnels 创建）
+# 用法：docker compose -f docker-compose.yml -f docker-compose.named-tunnel.yml up -d cloudflared
+# 注：改造镜像的 entrypoint 已含透明代理；命名隧道模式下需绕过默认启动脚本
+# 直接以 cloudflared 运行（边缘连接同样会被 iptables 规则代理，规则仍生效）。
+services:
+  cloudflared:
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        iptables -t nat -A OUTPUT -p tcp --dport 7844 -j REDIRECT --to-ports 12345
+        gost -L "red://:12345" -F "socks5://host.orb.internal:7897" >/var/log/gost.log 2>&1 &
+        exec cloudflared tunnel --no-autoupdate run --token "${TUNNEL_TOKEN:?请在 .env 中填写 TUNNEL_TOKEN}"

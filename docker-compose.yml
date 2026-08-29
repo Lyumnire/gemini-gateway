@@ -1,0 +1,80 @@
+name: gemini-gateway
+
+services:
+  # Gemini Web → OpenAI 兼容 API（社区开源项目，无需 API Key）
+  # 官方 GHCR 镜像只有 amd64，因此用 vendor 的上游源码构建原生 arm64 镜像。
+  # 构建命令（BuildKit 直连 docker.io 被墙，需用带代理的构建器）：
+  #   ./scripts/build-backend.sh
+  # 更新后端：cd backend/src && git pull && ./scripts/build-backend.sh && docker compose up -d gemini-api
+  gemini-api:
+    image: gemini-web-to-api:local
+    container_name: gg-gemini-api
+    restart: unless-stopped
+    environment:
+      - GEMINI_1PSID=${GEMINI_1PSID:-}
+      - GEMINI_1PSIDTS=${GEMINI_1PSIDTS:-}
+      - GEMINI_REFRESH_INTERVAL=${GEMINI_REFRESH_INTERVAL:-30}
+      - GEMINI_MAX_RETRIES=${GEMINI_MAX_RETRIES:-3}
+      - GEMINI_TEMPORARY=${GEMINI_TEMPORARY:-false}
+      - APP_ENV=production
+      - PORT=4981
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-30}
+      # 强制所有 Google 请求经过宿主机 Clash Verge（7897），严禁直连
+      - HTTPS_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
+      - HTTP_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
+      - NO_PROXY=localhost,127.0.0.1
+    volumes:
+      # 持久化 cookie 缓存：重启后登录态不丢
+      - ./data/cookies:/home/appuser/.cookies
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4981/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [gg]
+
+  # 入口网关：密码认证 + 托管前端 + 反代 API（唯一对内对外端口）
+  caddy:
+    image: caddy:2-alpine
+    container_name: gg-caddy
+    restart: unless-stopped
+    ports:
+      # 局域网入口（手机连同一 WiFi 可直接访问），公网只能走隧道
+      - "8080:80"
+    environment:
+      - GATEWAY_USER=${GATEWAY_USER:-admin}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/srv/www:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [gemini-api]
+    networks: [gg]
+
+  # Cloudflare Tunnel：默认免费临时域名（xxxx.trycloudflare.com，重启会变）
+  # 镜像为自制改造版（scripts/build-cloudflared-proxy.sh）：容器内 iptables 把
+  # CF 边缘(7844/TCP)流量透明转发给 gost → 宿主机 Clash，绕开对 argotunnel
+  # 端点的 TLS 干扰。需要 NET_ADMIN 权限操作 iptables。
+  # 升级固定域名：在 .env 填 TUNNEL_TOKEN 后用 override 启动，见 docs/deploy-guide.md
+  cloudflared:
+    image: gg-cloudflared-proxy:local
+    container_name: gg-cloudflared
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    environment:
+      # 让隧道注册/API 调用也走 Clash（与边缘连接同源，避免注册与连接不一致）
+      - HTTPS_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
+    depends_on: [caddy]
+    networks: [gg]
+
+networks:
+  gg:
+
+volumes:
+  caddy_data:
+  caddy_config:
