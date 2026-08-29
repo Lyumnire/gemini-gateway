@@ -1,4 +1,4 @@
-import type { ContentPart, MessageRole, OpenAIChunk } from '../types';
+import type { ContentPart, MessageRole, OpenAIChunk, ResearchSource } from '../types';
 import { ApiError } from '../types';
 
 export interface ChatMessageInput {
@@ -112,4 +112,94 @@ export async function listModels(): Promise<string[]> {
   if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
   const data = (await res.json()) as { data?: ModelInfo[] };
   return (data.data ?? []).map((m) => m.id);
+}
+
+/** 文生图：返回图片（data URL 或远程 URL）列表 */
+export async function generateImage(
+  model: string,
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const res = await fetch('/openai/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt, n: 1, response_format: 'b64_json' }),
+    signal,
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      msg = data?.error?.message || data?.message || msg;
+    } catch {
+      /* 保留默认消息 */
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const data = (await res.json()) as {
+    data?: { b64_json?: string; url?: string }[];
+  };
+  return (data.data ?? [])
+    .map((d) => (d.b64_json ? `data:image/png;base64,${d.b64_json}` : d.url ?? ''))
+    .filter(Boolean);
+}
+
+export interface DeepResearchEvent {
+  event: string;
+  message?: string;
+  progress?: number;
+  source?: ResearchSource;
+  result?: { summary?: string; sources?: ResearchSource[] };
+  error?: string;
+}
+
+export interface ResearchCallbacks {
+  onEvent: (ev: DeepResearchEvent) => void;
+}
+
+/** 深度研究：流式获取研究进度 / 来源 / 最终报告 */
+export async function streamDeepResearch(
+  query: string,
+  callbacks: ResearchCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch('/gemini/v1beta/deepresearch/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, language: 'zh' }),
+    signal,
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      msg = data?.error?.message || data?.message || msg;
+    } catch {
+      /* 保留默认消息 */
+    }
+    throw new ApiError(res.status, msg);
+  }
+  if (!res.body) throw new ApiError(res.status, '无响应内容');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line.startsWith('data:')) continue;
+      let ev: DeepResearchEvent;
+      try {
+        ev = JSON.parse(line.slice(5).trim()) as DeepResearchEvent;
+      } catch {
+        continue; // 忽略无法解析的行
+      }
+      callbacks.onEvent(ev);
+    }
+  }
 }

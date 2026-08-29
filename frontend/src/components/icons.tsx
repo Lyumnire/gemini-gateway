@@ -102,3 +102,14 @@ export function SparkIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function TelescopeIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11l14-6 2 5-14 6z" />
+      <path d="M7.5 13.5L6 19h4l1-3" />
+      <path d="M17 8.5L21 7" />
+      <circle cx="19.5" cy="5.5" r="1.5" />
+    </svg>
+  );
+}

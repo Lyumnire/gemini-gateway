@@ -1,33 +1,51 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Conversation } from '../types';
+import type { ChatMode, Conversation } from '../types';
 import MessageBubble from './MessageBubble';
 import Composer from './Composer';
 import { ChevronDownIcon, MenuIcon, SparkIcon } from './icons';
 
 interface Props {
   conversation: Conversation;
+  mode: ChatMode;
   model: string;
   models: string[];
   busy: boolean;
+  onModeChange: (m: ChatMode) => void;
   onModelChange: (m: string) => void;
   onOpenSidebar: () => void;
   onSend: (text: string, images: string[]) => void;
   onStop: () => void;
-  onRetry: () => void;
+  onRetry?: () => void;
 }
 
-const SUGGESTIONS = [
-  '用通俗易懂的方式解释一下量子纠缠',
-  '帮我写一首关于秋天的现代诗',
-  '三天两夜的上海旅行计划，喜欢美食和漫步',
-  '把下面这段话翻译成英文并润色：……',
-];
+const SUGGESTIONS: Record<ChatMode, string[]> = {
+  chat: [
+    '用通俗易懂的方式解释一下量子纠缠',
+    '帮我写一首关于秋天的现代诗',
+    '三天两夜的上海旅行计划，喜欢美食和漫步',
+    '把下面这段话翻译成英文并润色：……',
+  ],
+  image: [
+    '赛博朋克风格的霓虹城市夜景，雨后倒影',
+    '一只漂浮在太空中的橘猫，扁平插画',
+    '极简主义海报：远山与日出，留白构图',
+    '水彩风格的江南水乡清晨',
+  ],
+  research: [
+    '深度比较：固态电池与氢能源的产业化前景',
+    '研究 2026 年手机影像技术的演进路线',
+    '分析远程办公对一线城市住房结构的影响',
+    '梳理开源大模型许可证的差异与风险',
+  ],
+};
 
 export default function ChatView({
   conversation,
+  mode,
   model,
   models,
   busy,
+  onModeChange,
   onModelChange,
   onOpenSidebar,
   onSend,
@@ -80,18 +98,20 @@ export default function ChatView({
           <MenuIcon />
         </button>
         <h1 className="min-w-0 flex-1 truncate px-1 text-[15px] font-semibold">{conversation.title}</h1>
-        <select
-          value={model}
-          onChange={(e) => onModelChange(e.target.value)}
-          aria-label="选择模型"
-          className="max-w-[9.5rem] truncate rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-xs text-slate-500 outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-        >
-          {(models.length ? models : [model]).map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+        {mode === 'chat' && (
+          <select
+            value={model}
+            onChange={(e) => onModelChange(e.target.value)}
+            aria-label="选择模型"
+            className="max-w-[9.5rem] truncate rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-xs text-slate-500 outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+          >
+            {(models.length ? models : [model]).map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        )}
       </header>
 
       {/* 消息区 */}
@@ -102,15 +122,31 @@ export default function ChatView({
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 pb-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg">
+            <div
+              className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg ${
+                mode === 'image'
+                  ? 'bg-gradient-to-br from-fuchsia-500 to-purple-600'
+                  : mode === 'research'
+                    ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
+                    : 'bg-gradient-to-br from-indigo-500 to-violet-600'
+              }`}
+            >
               <SparkIcon className="h-7 w-7" />
             </div>
             <div>
-              <p className="text-lg font-semibold">有什么可以帮你？</p>
-              <p className="mt-1 text-xs text-slate-400">由 Mac 上的 Gemini 网页版会话驱动</p>
+              <p className="text-lg font-semibold">
+                {mode === 'image' ? '描述你想要的画面' : mode === 'research' ? '想深入研究什么？' : '有什么可以帮你？'}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {mode === 'image'
+                  ? '生成结果以图片形式展示'
+                  : mode === 'research'
+                    ? '会自动检索多个来源并汇总成报告'
+                    : '由 Mac 上的 Gemini 网页版会话驱动'}
+              </p>
             </div>
             <div className="grid w-full max-w-md grid-cols-1 gap-2 px-2 sm:grid-cols-2">
-              {SUGGESTIONS.map((s) => (
+              {SUGGESTIONS[mode].map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -149,7 +185,7 @@ export default function ChatView({
         )}
       </div>
 
-      <Composer busy={busy} onSend={onSend} onStop={onStop} />
+      <Composer mode={mode} busy={busy} onModeChange={onModeChange} onSend={onSend} onStop={onStop} />
     </div>
   );
 }

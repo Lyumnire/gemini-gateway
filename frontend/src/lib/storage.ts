@@ -1,4 +1,4 @@
-import type { Conversation, MessageRole, StoredMessage } from '../types';
+import type { ChatMode, Conversation, MessageRole, StoredMessage } from '../types';
 
 const CONV_KEY = 'gg-conversations';
 const ACTIVE_KEY = 'gg-active-conversation';
@@ -72,4 +72,15 @@ export function loadModel(fallback: string): string {
 
 export function saveModel(model: string): void {
   localStorage.setItem(MODEL_KEY, model);
+}
+
+const MODE_KEY2 = 'gg-ui-mode';
+
+export function loadUiMode(): ChatMode {
+  const v = localStorage.getItem(MODE_KEY2);
+  return v === 'image' || v === 'research' ? v : 'chat';
+}
+
+export function saveUiMode(m: ChatMode): void {
+  localStorage.setItem(MODE_KEY2, m);
 }

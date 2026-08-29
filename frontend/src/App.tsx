@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Conversation, StoredMessage } from './types';
+import type { ChatMode, Conversation, ResearchState, StoredMessage } from './types';
 import { ApiError } from './types';
-import { buildContent, listModels, streamChat, type ChatMessageInput } from './lib/api';
+import {
+  buildContent,
+  generateImage,
+  listModels,
+  streamChat,
+  streamDeepResearch,
+  type ChatMessageInput,
+} from './lib/api';
 import {
   createMessage,
   loadActiveId,
   loadConversations,
   loadModel,
   loadTheme,
+  loadUiMode,
   newConversation,
   saveActiveId,
   saveConversations,
   saveModel,
   saveTheme,
+  saveUiMode,
   titleFrom,
   type ThemeMode,
 } from './lib/storage';
@@ -31,6 +40,7 @@ export default function App() {
   const [model, setModel] = useState<string>(() => loadModel(FALLBACK_MODELS[0]));
   const [models, setModels] = useState<string[]>(FALLBACK_MODELS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mode, setMode] = useState<ChatMode>(loadUiMode);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -190,6 +200,135 @@ export default function App() {
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
+  /** 生图模式：调 /openai/v1/images/generations，图片落到 assistant 消息上 */
+  const sendImage = useCallback(
+    (text: string) => {
+      if (!active || busy) return;
+      const userMsg = createMessage('user', text);
+      const assistant = createMessage('assistant', '');
+      patchConversation(active.id, (c) => ({
+        ...c,
+        title: c.title === '新对话' ? titleFrom(text) : c.title,
+        updatedAt: Date.now(),
+        messages: [...c.messages, userMsg, assistant],
+      }));
+      setBusy(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      void (async () => {
+        try {
+          const urls = await generateImage('gemini-3-pro-image', text, controller.signal);
+          patchMessage(active.id, assistant.id, {
+            images: urls.length ? urls : undefined,
+            content: urls.length ? '' : '（未生成图片，请换一个描述试试）',
+          });
+        } catch (err) {
+          const aborted = err instanceof DOMException && err.name === 'AbortError';
+          patchMessage(active.id, assistant.id, {
+            content: aborted
+              ? '（已停止生成）'
+              : `⚠️ 生图失败：${err instanceof Error ? err.message : '未知错误'}`,
+            error: !aborted,
+          });
+        } finally {
+          setBusy(false);
+          abortRef.current = null;
+        }
+      })();
+    },
+    [active, busy, patchConversation, patchMessage],
+  );
+
+  /** 深度研究模式：调 /gemini/v1beta/deepresearch/stream，实时更新进度与来源 */
+  const sendResearch = useCallback(
+    (text: string) => {
+      if (!active || busy) return;
+      const userMsg = createMessage('user', text);
+      const assistant = createMessage('assistant', '');
+      const initResearch: ResearchState = {
+        progress: 5,
+        message: '正在启动深度研究…',
+        sources: [],
+        done: false,
+      };
+      patchConversation(active.id, (c) => ({
+        ...c,
+        title: c.title === '新对话' ? titleFrom(text) : c.title,
+        updatedAt: Date.now(),
+        messages: [...c.messages, userMsg, { ...assistant, research: initResearch }],
+      }));
+      setBusy(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const state: ResearchState = { ...initResearch };
+
+      void (async () => {
+        try {
+          await streamDeepResearch(
+            text,
+            {
+              onEvent: (ev) => {
+                if (ev.event === 'error') {
+                  throw new Error(ev.error || '研究失败');
+                }
+                if (ev.event === 'result' && ev.result) {
+                  state.done = true;
+                  patchMessage(active.id, assistant.id, {
+                    content: ev.result.summary || '（研究完成，未返回报告正文）',
+                    research: {
+                      ...state,
+                      sources: ev.result.sources ?? state.sources,
+                      done: true,
+                    },
+                  });
+                  return;
+                }
+                if (ev.event === 'progress' || ev.event === 'step') {
+                  state.progress = ev.progress ?? state.progress;
+                  state.message = ev.message ?? state.message;
+                } else if (ev.event === 'source' && ev.source) {
+                  if (!state.sources.some((s) => s.url && s.url === ev.source?.url)) {
+                    state.sources = [...state.sources, ev.source];
+                  }
+                }
+                patchMessage(active.id, assistant.id, { research: { ...state } });
+              },
+            },
+            controller.signal,
+          );
+          patchMessage(active.id, assistant.id, { research: { ...state, done: true } });
+        } catch (err) {
+          const aborted = err instanceof DOMException && err.name === 'AbortError';
+          patchMessage(active.id, assistant.id, {
+            content: aborted
+              ? '（已停止研究）'
+              : `⚠️ 深度研究失败：${err instanceof Error ? err.message : '未知错误'}`,
+            error: !aborted,
+            research: { ...state, done: true },
+          });
+        } finally {
+          setBusy(false);
+          abortRef.current = null;
+        }
+      })();
+    },
+    [active, busy, patchConversation, patchMessage],
+  );
+
+  const handleSend = useCallback(
+    (text: string, images: string[]) => {
+      if (mode === 'image') sendImage(text);
+      else if (mode === 'research') sendResearch(text);
+      else sendMessage(text, images);
+    },
+    [mode, sendImage, sendResearch, sendMessage],
+  );
+
+  const handleModeChange = useCallback((m: ChatMode) => {
+    setMode(m);
+    saveUiMode(m);
+  }, []);
+
   const handleNew = useCallback(() => {
     const conv = newConversation();
     setConversations((prev) => [conv, ...prev]);
@@ -240,14 +379,16 @@ export default function App() {
       />
       <ChatView
         conversation={active}
+        mode={mode}
         model={model}
         models={models}
         busy={busy}
+        onModeChange={handleModeChange}
         onModelChange={handleModelChange}
         onOpenSidebar={() => setSidebarOpen(true)}
-        onSend={sendMessage}
+        onSend={handleSend}
         onStop={stop}
-        onRetry={retryLast}
+        onRetry={mode === 'chat' ? retryLast : undefined}
       />
     </div>
   );
