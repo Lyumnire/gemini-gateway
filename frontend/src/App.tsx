@@ -30,6 +30,8 @@ import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 
 const FALLBACK_MODELS = ['gemini-advanced', 'gemini-pro'];
+// 实测可用的文生图模型（社区昵称 nano banana）；3-pro-image 因账号/区域暂不可用
+const IMAGE_GEN_MODEL = 'gemini-2.5-flash-image';
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
@@ -219,7 +221,7 @@ export default function App() {
       abortRef.current = controller;
       void (async () => {
         try {
-          const urls = await generateImage('gemini-3-pro-image', text, controller.signal);
+          const urls = await generateImage(IMAGE_GEN_MODEL, text, controller.signal);
           patchMessage(active.id, assistant.id, {
             images: urls.length ? urls : undefined,
             content: urls.length ? '' : '（未生成图片，请换一个描述试试）',

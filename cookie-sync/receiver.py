@@ -59,16 +59,27 @@ def write_env(new_text: str) -> None:
     os.chmod(ENV_FILE, 0o600)
 
 
+_last_restart = 0.0
+
+
 def restart_backend() -> None:
     # 注意：docker restart 不会重新读取 .env（环境变量在容器创建时固化），
     # 必须用 compose force-recreate 才能让新配置生效
+    global _last_restart
+    if time.time() - _last_restart < 15:
+        log("距上次重建不足 15 秒，跳过（下一次推送会再触发）")
+        return
+    _last_restart = time.time()
     try:
-        subprocess.run(["/usr/local/bin/docker", "compose", "-f", str(ROOT / "docker-compose.yml"),
-                        "up", "-d", "--force-recreate", BACKEND_CONTAINER],
-                       check=True, timeout=120, capture_output=True, cwd=str(ROOT))
-        log("后端容器已重建（新配置生效）")
+        r = subprocess.run(["/usr/local/bin/docker", "compose", "-f", str(ROOT / "docker-compose.yml"),
+                            "up", "-d", "--force-recreate", BACKEND_CONTAINER],
+                           capture_output=True, text=True, timeout=120, cwd=str(ROOT))
+        if r.returncode == 0:
+            log("后端容器已重建（新配置生效）")
+        else:
+            log(f"重建失败(exit {r.returncode}): {(r.stderr or r.stdout)[-400:]}")
     except Exception as e:  # noqa: BLE001
-        log(f"重启后端失败: {e}")
+        log(f"重启后端异常: {e}")
 
 
 class Handler(BaseHTTPRequestHandler):
