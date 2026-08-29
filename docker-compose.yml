@@ -31,7 +31,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4981/health"]
+      # unset 代理：OrbStack 会向容器注入 http(s)_proxy，busybox wget 会遵守，
+      # 导致健康检查被转发到宿主机 Clash 而误报 502
+      test: ["CMD", "sh", "-c", "unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY; wget -qO- http://127.0.0.1:4981/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -48,6 +50,10 @@ services:
       - "8080:80"
     environment:
       - GATEWAY_USER=${GATEWAY_USER:-admin}
+      # OrbStack 会随系统代理向容器注入 HTTP(S)_PROXY，会把反代到内部容器名的
+      # 请求也发给 Clash 导致挂起；这里豁免内部通信
+      - NO_PROXY=localhost,127.0.0.1,gemini-api,192.168.97.0/24
+      - no_proxy=localhost,127.0.0.1,gemini-api,192.168.97.0/24
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./frontend/dist:/srv/www:ro

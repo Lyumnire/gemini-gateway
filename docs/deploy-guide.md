@@ -122,6 +122,7 @@
 | 网页弹出两次密码框 | 浏览器记住凭据即可；若频繁出现清一次浏览器站点数据 |
 | 回复出现 "Session error" | 上游会话令牌过期，后端会自动轮换重试；持续出现则重抄 Cookie |
 | 出口 IP 想确认走没走 Clash | `curl -x http://127.0.0.1:7897 https://api.ipify.org` 与后端日志比对 |
+| API 请求经 Caddy 挂起/超时 | **OrbStack 会随 macOS 系统代理向所有容器注入 `HTTP(S)_PROXY`**，反代到内部容器名的请求会被误发给 Clash。已在 compose 中用 `NO_PROXY=…gemini-api` 豁免；若改动服务名，记得同步更新 caddy 的 NO_PROXY |
 
 ## 八、安全清单
 
