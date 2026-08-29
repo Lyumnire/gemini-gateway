@@ -21,6 +21,8 @@ services:
       - RATE_LIMIT_ENABLED=true
       - RATE_LIMIT_WINDOW_MS=60000
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-30}
+      # 官网模型别名 → 动态令牌（由 docs/capture-model-id.md 抓包获得）
+      - GEMINI_MODEL_ALIASES=${GEMINI_MODEL_ALIASES:-}
       # 强制所有 Google 请求经过宿主机 Clash Verge（7897），严禁直连
       - HTTPS_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
       - HTTP_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
