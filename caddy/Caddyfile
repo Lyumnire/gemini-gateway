@@ -24,6 +24,15 @@
 		Cache-Control "no-store"
 	}
 
+	# 公开静态资源（PWA manifest 抓取不带认证凭据，需豁免；均无敏感信息）
+	@public {
+		path /manifest.webmanifest /favicon.svg /pwa-192.png /pwa-512.png
+	}
+	handle @public {
+		root * /srv/www
+		file_server
+	}
+
 	# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
 	@api path /openai/* /claude/* /gemini/* /health /docs /openapi.json
 	handle @api {

@@ -21,12 +21,17 @@ export default function App() {
     setSessions(api.getSessions());
   }, []);
 
+  // 会话列表只在挂载时拉取一次（避免 modelNames 每次渲染都是新数组引发无限更新）
   useEffect(() => {
     fetchSessions();
+  }, [fetchSessions]);
+
+  const modelNamesKey = modelNames.join(',');
+  useEffect(() => {
     if (!loading && !selectedModel && modelNames.length > 0) {
       setSelectedModel(modelNames[0]);
     }
-  }, [fetchSessions, models, loading, selectedModel, modelNames]);
+  }, [loading, selectedModel, modelNamesKey]);
 
   const handleSessionSelect = useCallback((id: number) => {
     setCurrentSessionId(id);
