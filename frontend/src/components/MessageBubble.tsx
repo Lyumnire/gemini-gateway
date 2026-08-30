@@ -3,6 +3,40 @@ import type { StoredMessage } from '../types';
 import Markdown from './Markdown';
 import { CheckIcon, CopyIcon, RefreshIcon, SparkIcon } from './icons';
 
+/** 把图片（data URL 或远程 URL）转成 PNG 并触发下载，与官网"下载原图"一致 */
+async function downloadImage(src: string, filename: string): Promise<void> {
+  try {
+    let blob: Blob;
+    if (src.startsWith('data:image/png')) {
+      blob = await (await fetch(src)).blob();
+    } else {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = src;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d')!.drawImage(img, 0, 0);
+      blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('转码失败'))), 'image/png'),
+      );
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch {
+    // 转码失败时退化为直接打开原图
+    window.open(src, '_blank');
+  }
+}
+
 interface Props {
   message: StoredMessage;
   streaming?: boolean;
@@ -96,12 +130,22 @@ function MessageBubble({ message, streaming, showRetry, onRetry }: Props) {
         {message.images && message.images.length > 0 && (
           <div className="mb-1.5 flex flex-col gap-2">
             {message.images.map((src, i) => (
-              <img
-                key={i}
-                src={src}
-                alt={`生成结果 ${i + 1}`}
-                className="w-full max-w-md rounded-xl border border-black/5 shadow-sm"
-              />
+              <figure key={i} className="w-full max-w-md">
+                <img
+                  src={src}
+                  alt={`生成结果 ${i + 1}`}
+                  className="w-full rounded-xl border border-black/5 shadow-sm"
+                />
+                <figcaption className="mt-1 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void downloadImage(src, `gemini-image-${Date.now()}.png`)}
+                    className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                  >
+                    下载原图（PNG）
+                  </button>
+                </figcaption>
+              </figure>
             ))}
           </div>
         )}
