@@ -2,9 +2,10 @@
  * App — 根组件：单一对话流（生图/深度研究作为 + 工具融合在对话里）。
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Layout, type SessionEntry } from './components/Layout';
 import { ChatView } from './components/ChatView';
+import type { Tool } from './components/Composer';
 import { useModels } from './hooks/useModels';
 import { api } from './lib/api_client';
 
@@ -14,6 +15,8 @@ export default function App() {
 
   const [sessions, setSessions] = useState<SessionEntry[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
+  const [activeTool, setActiveTool] = useState<Tool | null>(null);
+  const modelBeforeToolRef = useRef<string>('');
 
   const modelNames = Object.keys(models.llm || {});
 
@@ -49,6 +52,17 @@ export default function App() {
     setCurrentSessionId(null);
   }, []);
 
+  // 官方式工具切换：生成图片 → 模型自动切到 3.1 Pro（聊天内直接出图）；取消恢复
+  const handleToolChange = useCallback((t: Tool | null) => {
+    setActiveTool(t);
+    if (t === 'image') {
+      modelBeforeToolRef.current = selectedModel;
+      setSelectedModel('gemini-3.1-pro');
+    } else if (t === null && selectedModel === 'gemini-3.1-pro') {
+      setSelectedModel(modelBeforeToolRef.current || 'gemini-advanced');
+    }
+  }, [selectedModel]);
+
   const handleSessionCreated = useCallback((id: number) => {
     setCurrentSessionId(id);
     fetchSessions();
@@ -68,6 +82,8 @@ export default function App() {
       <ChatView
         model={selectedModel}
         models={models}
+        activeTool={activeTool}
+        onToolChange={handleToolChange}
         currentSessionId={currentSessionId}
         onSessionCreated={handleSessionCreated}
       />

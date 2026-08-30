@@ -23,7 +23,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 
 import { api, type ChatMessage } from '@/lib/api_client';
 import { parseThinkingMessage } from '@/lib/think_parser';
-import { Composer, type Tool } from './Composer';
+import { Composer, type Tool, type AttachedFile } from './Composer';
 
 // ------------------------------------------------------------------
 // Types
@@ -67,7 +67,6 @@ interface Msg {
 let _id = 0;
 const uid = () => `m${++_id}`;
 
-const IMAGE_GEN_MODEL = 'gemini-3-pro-image-preview-11-2025';
 
 // ------------------------------------------------------------------
 // 生成图下载（PNG 转码）
@@ -395,10 +394,13 @@ function useReportDownload() {
 // ------------------------------------------------------------------
 
 export function ChatView({
-  model, models: _models, currentSessionId, onSessionCreated,
+  model, models: _models, activeTool, onToolChange,
+  currentSessionId, onSessionCreated,
 }: {
   model: string;
   models: unknown;
+  activeTool: Tool | null;
+  onToolChange: (t: Tool | null) => void;
   currentSessionId: number | null;
   onSessionCreated: (id: number) => void;
 }) {
@@ -406,8 +408,7 @@ export function ChatView({
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [enableThinking, setEnableThinking] = useState(true);
-  const [activeTool, setActiveTool] = useState<Tool | null>(null);
-  const [attachedFile, setAttachedFile] = useState<import('./Composer').AttachedFile | null>(null);
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { downloadedReportId, download: downloadReport } = useReportDownload();
@@ -438,7 +439,7 @@ export function ChatView({
 
   // ---- 附件（图片 data URL / 文本内容）----
 
-  const handleAttach = useCallback((f: import('./Composer').AttachedFile) => {
+  const handleAttach = useCallback((f: AttachedFile) => {
     setAttachedFile(f);
   }, []);
 
@@ -506,13 +507,8 @@ export function ChatView({
     };
 
     try {
-      // ---- 生成图片工具 ----
-      if (activeTool === 'image') {
-        const result = await api.generateImage(IMAGE_GEN_MODEL, text, controller.signal);
-        finish({ image: result.image });
-      }
       // ---- 深度研究工具 ----
-      else if (activeTool === 'research') {
+      if (activeTool === 'research') {
         const state = { progress: 4, status: '正在启动深度研究…', sources: [] as Source[] };
         for await (const ev of api.deepResearchStream(text, controller.signal)) {
           if (ev.event === 'error') throw new Error(ev.error || '研究失败');
@@ -654,7 +650,7 @@ export function ChatView({
     onKeyDown: handleKeyDown,
     onSend: handleSend,
     onStop: handleStop,
-    onToolChange: setActiveTool,
+    onToolChange,
     onAttach: handleAttach,
     onDetach: handleDetach,
     enableThinking,
