@@ -11,6 +11,7 @@ import {
 import {
   ArrowUp, Square, Plus, X, FileText, ImageIcon, Telescope, Check,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import { cn } from '@/lib/utils';
 
@@ -138,60 +139,6 @@ export function Composer({
 
   const canSend = (input.trim() || (!tool && attached)) && !streaming;
 
-  // 工具胶囊（激活时替代 + 按钮的位置）
-  const ToolChip = (
-    <button
-      type="button"
-      onClick={() => onToolChange(null)}
-      title="取消工具"
-      style={{
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        height: '32px',
-        padding: '0 12px',
-        borderRadius: '16px',
-        border: 'none',
-        cursor: 'pointer',
-        background: '#0f172a',
-        color: '#ffffff',
-        fontSize: '13px',
-        fontWeight: 500,
-        transition: 'all 0.15s ease',
-      }}
-    >
-      {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
-      {tool === 'image' ? 'Images' : 'Deep Research'}
-      <X size={13} style={{ opacity: 0.7 }} />
-    </button>
-  );
-
-  // + 按钮（工具菜单入口）
-  const PlusButton = (
-    <button
-      type="button"
-      onClick={handlePlusClick}
-      style={{
-        flexShrink: 0,
-        width: '32px',
-        height: '32px',
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        border: 'none',
-        cursor: 'pointer',
-        background: menuOpen ? '#0f172a' : 'transparent',
-        color: menuOpen ? '#ffffff' : '#94a3b8',
-        transition: 'all 0.15s',
-      }}
-      tabIndex={-1}
-      title="工具菜单"
-    >
-      <Plus size={18} strokeWidth={2} style={{ transform: menuOpen ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s ease' }} />
-    </button>
-  );
 
   // 思考开关（omnihermit 原样）
   const ThinkingToggle = (
@@ -430,9 +377,55 @@ export function Composer({
             : '0 2px 20px rgba(0,0,0,0.04), 0 8px 40px rgba(0,0,0,0.03)',
         }}
       >
-        {/* 单行：工具胶囊（激活时）或 + 按钮 */}
+        {/* 单行：工具胶囊（激活时）或 + 按钮 — 液态形变切换 */}
         {!isMultiline && (
-          tool ? ToolChip : PlusButton
+          <AnimatePresence mode="popLayout" initial={false}>
+            {tool ? (
+              <motion.button
+                key="tool-chip"
+                layoutId="gg-tool-pill"
+                type="button"
+                onClick={() => onToolChange(null)}
+                title="取消工具"
+                initial={{ opacity: 0, scale: 0.5, borderRadius: '999px' }}
+                animate={{ opacity: 1, scale: 1, borderRadius: '16px' }}
+                exit={{ opacity: 0, scale: 0.5, borderRadius: '999px' }}
+                transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  height: 32, padding: '0 12px', border: 'none', cursor: 'pointer',
+                  background: '#0f172a', color: '#ffffff',
+                  fontSize: 13, fontWeight: 500, flexShrink: 0,
+                }}
+              >
+                {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
+                {tool === 'image' ? 'Images' : 'Deep Research'}
+                <X size={13} style={{ opacity: 0.7 }} />
+              </motion.button>
+            ) : (
+              <motion.button
+                key="plus"
+                layoutId="gg-tool-pill"
+                type="button"
+                onClick={handlePlusClick}
+                tabIndex={-1}
+                title="工具菜单"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                style={{
+                  flexShrink: 0, width: 32, height: 32,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: 'none', cursor: 'pointer',
+                  background: menuOpen ? '#0f172a' : 'transparent',
+                  color: menuOpen ? '#ffffff' : '#94a3b8',
+                }}
+              >
+                <Plus size={18} strokeWidth={2} style={{ transform: menuOpen ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         )}
 
         {/* 文本输入区 */}
@@ -457,7 +450,49 @@ export function Composer({
         {/* 多行时：底部按钮栏 */}
         {isMultiline && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
-            {tool ? ToolChip : PlusButton}
+            <AnimatePresence mode="popLayout" initial={false}>
+              {tool ? (
+                <motion.button
+                  key="tool-chip-m"
+                  layoutId="gg-tool-pill-m"
+                  type="button"
+                  onClick={() => onToolChange(null)}
+                  initial={{ opacity: 0, scale: 0.5, borderRadius: '999px' }}
+                  animate={{ opacity: 1, scale: 1, borderRadius: '16px' }}
+                  exit={{ opacity: 0, scale: 0.5, borderRadius: '999px' }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, height: 32,
+                    padding: '0 12px', border: 'none', cursor: 'pointer',
+                    background: '#0f172a', color: '#ffffff', fontSize: 13,
+                    fontWeight: 500, flexShrink: 0,
+                  }}
+                >
+                  {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
+                  {tool === 'image' ? 'Images' : 'Deep Research'}
+                  <X size={13} style={{ opacity: 0.7 }} />
+                </motion.button>
+              ) : (
+                <motion.button
+                  key="plus-m"
+                  layoutId="gg-tool-pill-m"
+                  type="button"
+                  onClick={handlePlusClick}
+                  tabIndex={-1}
+                  initial={{ opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.6 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                  style={{
+                    flexShrink: 0, width: 32, height: 32, borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none', cursor: 'pointer', background: 'transparent', color: '#94a3b8',
+                  }}
+                >
+                  <Plus size={18} strokeWidth={2} />
+                </motion.button>
+              )}
+            </AnimatePresence>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {(thinkingType === 'controllable' || thinkingType === 'forced') && ThinkingToggle}
               {SendButton}

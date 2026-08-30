@@ -28,9 +28,11 @@ export default function App() {
 
   const modelNamesKey = modelNames.join(',');
   useEffect(() => {
-    if (!loading && !selectedModel && modelNames.length > 0) {
-      setSelectedModel(modelNames[0]);
-    }
+    if (loading || selectedModel || modelNames.length === 0) return;
+    // 默认旗舰别名：gemini-advanced
+    setSelectedModel(
+      modelNames.includes('gemini-advanced') ? 'gemini-advanced' : modelNames[0],
+    );
   }, [loading, selectedModel, modelNamesKey]);
 
   const handleSessionSelect = useCallback((id: number) => {
