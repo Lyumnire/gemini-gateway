@@ -30,8 +30,9 @@ import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 
 const FALLBACK_MODELS = ['gemini-advanced', 'gemini-pro'];
-// 实测可用的文生图模型（社区昵称 nano banana）；3-pro-image 因账号/区域暂不可用
-const IMAGE_GEN_MODEL = 'gemini-2.5-flash-image';
+// 实测可用：Pro 会员的 Nano Banana Pro 档（裸 ID gemini-3-pro-image 不路由，
+// 预览版内部 ID 可用）；备选 nano banana = gemini-2.5-flash-image
+const IMAGE_GEN_MODEL = 'gemini-3-pro-image-preview-11-2025';
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
