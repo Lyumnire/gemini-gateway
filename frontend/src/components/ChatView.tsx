@@ -671,7 +671,7 @@ export function ChatView({
           <Composer {...shared} />
         </div>
         <div style={{ marginTop: 12, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          Gemini Web 可能会犯错，请核查重要信息。
+          Gemini Web v{__BUILD_ID__} · 可能会犯错，请核查重要信息。
         </div>
       </div>
     </div>
@@ -700,7 +700,7 @@ export function ChatView({
           <Composer {...shared} />
         </div>
         <div style={{ marginTop: 10, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          Gemini Web 可能会犯错，请核查重要信息。
+          Gemini Web v{__BUILD_ID__} · 可能会犯错，请核查重要信息。
         </div>
       </div>
     </div>
