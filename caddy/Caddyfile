@@ -20,6 +20,8 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy no-referrer
 		-Server
+		# PWA 入口与 Service Worker 禁缓存，部署即时生效
+		Cache-Control "no-store"
 	}
 
 	# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
