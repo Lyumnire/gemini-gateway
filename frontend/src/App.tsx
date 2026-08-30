@@ -379,7 +379,11 @@ export default function App() {
   if (!active) return null;
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div
+      data-mode={imageTool ? 'image' : uiMode}
+      className="relative flex h-dvh overflow-hidden text-slate-900 dark:text-slate-100"
+    >
+      <div className="aurora" aria-hidden />
       <Sidebar
         open={sidebarOpen}
         conversations={conversations}

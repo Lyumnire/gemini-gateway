@@ -85,7 +85,13 @@ function MessageBubble({ message, streaming, showRetry, onRetry }: Props) {
             </div>
           )}
           {message.content && (
-            <div className="rounded-2xl rounded-br-md bg-indigo-600 px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-white shadow-sm">
+            <div
+              className="rounded-2xl rounded-br-md px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-slate-800 shadow-sm backdrop-blur-sm dark:text-slate-100"
+              style={{
+                background: 'var(--bubble-user-bg)',
+                border: '1px solid var(--bubble-user-border)',
+              }}
+            >
               {message.content}
             </div>
           )}
@@ -105,7 +111,7 @@ function MessageBubble({ message, streaming, showRetry, onRetry }: Props) {
         </div>
 
         {message.research && !message.research.done && (
-          <div className="mb-1.5 rounded-xl border border-teal-200/70 bg-teal-50/60 px-3 py-2.5 dark:border-teal-800/60 dark:bg-teal-950/30">
+          <div className="mb-1.5 rounded-xl border border-teal-200/50 bg-teal-50/50 px-3 py-2.5 backdrop-blur-sm dark:border-teal-800/50 dark:bg-teal-950/25">
             <div className="flex items-center justify-between text-xs text-teal-700 dark:text-teal-300">
               <span className="flex items-center gap-1.5">
                 <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-teal-500 motion-reduce:animate-none" />
@@ -130,19 +136,20 @@ function MessageBubble({ message, streaming, showRetry, onRetry }: Props) {
         {message.images && message.images.length > 0 && (
           <div className="mb-1.5 flex flex-col gap-2">
             {message.images.map((src, i) => (
-              <figure key={i} className="w-full max-w-md">
-                <img
-                  src={src}
-                  alt={`生成结果 ${i + 1}`}
-                  className="w-full rounded-xl border border-black/5 shadow-sm"
-                />
-                <figcaption className="mt-1 flex items-center justify-end">
+              <figure
+                key={i}
+                className="w-full max-w-md overflow-hidden rounded-2xl border border-white/40 shadow-sm backdrop-blur-sm dark:border-white/10"
+                style={{ background: 'var(--glass-bg)' }}
+              >
+                <img src={src} alt={`生成结果 ${i + 1}`} className="w-full" />
+                <figcaption className="flex items-center justify-end gap-2 px-3 py-1.5">
+                  <span className="text-[10px] text-slate-400">PNG · 原图</span>
                   <button
                     type="button"
                     onClick={() => void downloadImage(src, `gemini-image-${Date.now()}.png`)}
-                    className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                    className="rounded-lg bg-slate-900/5 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-900/10 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/20"
                   >
-                    下载原图（PNG）
+                    下载原图
                   </button>
                 </figcaption>
               </figure>
@@ -165,15 +172,16 @@ function MessageBubble({ message, streaming, showRetry, onRetry }: Props) {
           )
         ) : (
           <div
-            className={`rounded-2xl rounded-bl-md px-3.5 py-2.5 shadow-sm ${
+            className={`rounded-2xl rounded-bl-md px-3.5 py-2.5 shadow-sm backdrop-blur-sm ${
               message.error
-                ? 'border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200'
+                ? 'border border-amber-300/70 bg-amber-50/80 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200'
                 : message.research
-                  ? 'bg-white text-slate-800 ring-1 ring-teal-200/80 dark:bg-slate-800 dark:text-slate-100 dark:ring-teal-800/70'
-                  : 'bg-white text-slate-800 ring-1 ring-slate-200/70 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700'
+                  ? 'border border-teal-200/50 bg-white/60 text-slate-800 dark:border-teal-800/50 dark:bg-slate-800/50 dark:text-slate-100'
+                  : 'glass-strong text-slate-800 dark:text-slate-100'
             }`}
           >
             <Markdown content={message.content} />
+            {streaming && message.content && <span className="cursor-blink" aria-hidden />}
           </div>
         )}
 

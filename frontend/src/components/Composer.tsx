@@ -80,12 +80,12 @@ export default function Composer({
   const accent = imageTool ? 'bg-fuchsia-600 hover:bg-fuchsia-700' : MODE_META[uiMode].accent;
 
   return (
-    <div className="relative border-t border-slate-200/80 bg-slate-50/90 px-3 pb-[max(0.6rem,var(--safe-bottom))] pt-2 backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/90">
+    <div className="glass relative z-10 border-t border-t-white/40 px-3 pb-[max(0.6rem,var(--safe-bottom))] pt-2 dark:border-t-white/5">
       {/* + 工具菜单 */}
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="absolute bottom-full left-3 z-20 mb-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+          <div className="glass-strong scale-in absolute bottom-full left-3 z-20 mb-2 w-56 overflow-hidden rounded-2xl shadow-lg">
             <button
               type="button"
               disabled={busy}
@@ -93,11 +93,11 @@ export default function Composer({
                 fileRef.current?.click();
                 setMenuOpen(false);
               }}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:text-slate-200 dark:hover:bg-slate-700"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-900/[0.04] disabled:opacity-40 dark:text-slate-200 dark:hover:bg-white/[0.06]"
             >
               <ImageIcon className="h-4 w-4 text-slate-400" />
               上传图片
-              <span className="ml-auto text-[10px] text-slate-400">让 Gemini 看图</span>
+              <span className="ml-auto text-[10px] text-slate-400">看图</span>
             </button>
             <button
               type="button"
@@ -107,11 +107,11 @@ export default function Composer({
                 onImageToolChange(!imageTool);
                 setMenuOpen(false);
               }}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:text-slate-200 dark:hover:bg-slate-700"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-900/[0.04] disabled:opacity-40 dark:text-slate-200 dark:hover:bg-white/[0.06]"
             >
               <SparkIcon className={`h-4 w-4 ${imageTool ? 'text-fuchsia-500' : 'text-slate-400'}`} />
               {imageTool ? '关闭生成图片' : '生成图片'}
-              <span className="ml-auto text-[10px] text-slate-400">文生图工具</span>
+              <span className="ml-auto text-[10px] text-slate-400">文生图</span>
             </button>
           </div>
         </>
@@ -141,7 +141,10 @@ export default function Composer({
           );
         })}
         {imageTool && (
-          <span className="flex items-center gap-1 rounded-full bg-fuchsia-100 px-3 py-1.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-950/60 dark:text-fuchsia-300">
+          <span
+            className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-fuchsia-700 backdrop-blur-sm dark:text-fuchsia-300"
+            style={{ background: 'var(--bubble-user-bg)', border: '1px solid var(--bubble-user-border)' }}
+          >
             生成图片
             <button
               type="button"
@@ -190,8 +193,8 @@ export default function Composer({
             onClick={() => setMenuOpen((v) => !v)}
             className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
               menuOpen
-                ? 'bg-slate-700 text-white'
-                : 'text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
+                : 'text-slate-500 hover:bg-slate-900/[0.05] dark:hover:bg-white/[0.08]'
             }`}
           >
             {menuOpen ? <CloseIcon /> : <PlusIcon />}
@@ -205,7 +208,7 @@ export default function Composer({
           onKeyDown={handleKey}
           rows={1}
           placeholder={imageTool ? '描述你想要的画面…' : PLACEHOLDER[uiMode]}
-          className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-[15px] leading-snug outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-indigo-900/50"
+          className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-slate-300/50 bg-white/60 px-3.5 py-2.5 text-[15px] leading-snug shadow-sm outline-none backdrop-blur placeholder:text-slate-400 transition-shadow focus:border-indigo-300 focus:shadow-[0_0_0_3px_rgba(99,102,241,0.08)] dark:border-slate-600/50 dark:bg-slate-800/50 dark:text-slate-100 dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)]"
         />
 
         {busy ? (

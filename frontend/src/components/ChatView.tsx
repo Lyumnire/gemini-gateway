@@ -88,10 +88,10 @@ export default function ChatView({
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="relative z-10 flex min-w-0 flex-1 flex-col">
       {/* 顶栏 */}
       <header
-        className="flex items-center gap-1 border-b border-slate-200/80 bg-white/80 px-2 backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/80"
+        className="flex items-center gap-1 border-b border-white/40 bg-white/40 px-2 backdrop-blur-xl dark:border-white/5 dark:bg-slate-900/40"
         style={{ paddingTop: 'max(0.4rem, var(--safe-top))', paddingBottom: '0.4rem' }}
       >
         <button
@@ -108,7 +108,7 @@ export default function ChatView({
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
             aria-label="选择模型"
-            className="max-w-[9.5rem] truncate rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-xs text-slate-500 outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            className="max-w-[9.5rem] truncate rounded-lg border border-slate-300/40 bg-white/40 px-2 py-1.5 text-xs text-slate-500 outline-none backdrop-blur transition-colors hover:border-slate-400/60 dark:border-slate-600/50 dark:bg-slate-800/40 dark:text-slate-300"
           >
             {(models.length ? models : [model]).map((m) => (
               <option key={m} value={m}>
@@ -127,28 +127,22 @@ export default function ChatView({
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 pb-16 text-center">
-            <div
-              className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg ${
-                imageTool
-                  ? 'bg-gradient-to-br from-fuchsia-500 to-purple-600'
-                  : uiMode === 'research'
-                    ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
-                    : 'bg-gradient-to-br from-indigo-500 to-violet-600'
-              }`}
-            >
-              <SparkIcon className="h-7 w-7" />
+            <div className="glass flex h-16 w-16 items-center justify-center rounded-3xl">
+              <SparkIcon
+                className={`h-8 w-8 ${
+                  imageTool ? 'text-fuchsia-500' : uiMode === 'research' ? 'text-teal-500' : 'text-indigo-500'
+                }`}
+              />
             </div>
             <div>
-              <p className="text-lg font-semibold">
+              <p className="text-lg font-semibold tracking-tight">
                 {imageTool ? '描述你想要的画面' : uiMode === 'research' ? '想深入研究什么？' : '有什么可以帮你？'}
               </p>
-              <p className="mt-1 text-xs text-slate-400">
-                {imageTool
-                  ? '生成结果以图片形式展示'
-                  : uiMode === 'research'
-                    ? '会自动检索多个来源并汇总成报告'
-                    : '由 Mac 上的 Gemini 网页版会话驱动'}
-              </p>
+              <div className="mt-2 flex justify-center">
+                <span className="rounded-full border border-white/45 bg-white/35 px-3 py-1 text-[11px] font-medium text-slate-400/90 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
+                  {imageTool ? 'Nano Banana Pro' : uiMode === 'research' ? '多来源 · 自动汇总' : '私有部署 · 你的会话'}
+                </span>
+              </div>
             </div>
             <div className="grid w-full max-w-md grid-cols-1 gap-2 px-2 sm:grid-cols-2">
               {(imageTool ? SUGGESTIONS.image : SUGGESTIONS[uiMode]).map((s) => (
@@ -156,7 +150,7 @@ export default function ChatView({
                   key={s}
                   type="button"
                   onClick={() => onSend(s, [])}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] leading-snug text-slate-600 shadow-sm transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500 dark:hover:text-indigo-300"
+                  className="rounded-xl border border-white/45 bg-white/40 px-3 py-2.5 text-left text-[13px] leading-snug text-slate-600 shadow-sm backdrop-blur transition-all hover:border-indigo-300/70 hover:bg-white/60 hover:text-indigo-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:bg-white/10 dark:hover:text-indigo-300"
                 >
                   {s}
                 </button>
@@ -183,7 +177,7 @@ export default function ChatView({
             type="button"
             aria-label="回到底部"
             onClick={scrollToBottom}
-            className="sticky bottom-2 left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-md transition-colors hover:text-indigo-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            className="glass sticky bottom-2 left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full text-slate-500 transition-colors hover:text-indigo-600 dark:text-slate-300"
           >
             <ChevronDownIcon className="h-4.5 w-4.5" />
           </button>

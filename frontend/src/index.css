@@ -4,11 +4,141 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* iOS 安全区与移动端基础 */
+/* ================================================================
+   Design System — Liquid Aurora
+   融合 OmniHermit「Liquid Crystal」玻璃语言 +
+   模式感知的极光环境光（对话=靛蓝 / 画图=品红 / 研究=青色）
+   ================================================================ */
+
 :root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-blur: 20px;
+  --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.05);
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* 用户气泡：随模式着色的玻璃 */
+  --bubble-user-bg: rgba(99, 102, 241, 0.14);
+  --bubble-user-border: rgba(99, 102, 241, 0.22);
+
+  /* 极光（随 data-mode 切换） */
+  --aurora-1: rgba(99, 102, 241, 0.32);
+  --aurora-2: rgba(139, 92, 246, 0.22);
+  --aurora-1-dark: rgba(67, 56, 202, 0.4);
+  --aurora-2-dark: rgba(91, 33, 182, 0.3);
 }
+
+[data-mode='image'] {
+  --bubble-user-bg: rgba(217, 70, 239, 0.13);
+  --bubble-user-border: rgba(217, 70, 239, 0.22);
+  --aurora-1: rgba(217, 70, 239, 0.26);
+  --aurora-2: rgba(168, 85, 247, 0.18);
+  --aurora-1-dark: rgba(162, 28, 175, 0.32);
+  --aurora-2-dark: rgba(126, 34, 206, 0.24);
+}
+
+[data-mode='research'] {
+  --bubble-user-bg: rgba(20, 184, 166, 0.13);
+  --bubble-user-border: rgba(20, 184, 166, 0.22);
+  --aurora-1: rgba(20, 184, 166, 0.26);
+  --aurora-2: rgba(6, 182, 212, 0.18);
+  --aurora-1-dark: rgba(15, 118, 110, 0.34);
+  --aurora-2-dark: rgba(8, 145, 178, 0.26);
+}
+
+.dark {
+  --glass-bg: rgba(30, 41, 59, 0.55);
+  --glass-bg-strong: rgba(30, 41, 59, 0.72);
+  --glass-border: rgba(51, 65, 85, 0.55);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  --bubble-user-bg: rgba(99, 102, 241, 0.24);
+  --bubble-user-border: rgba(129, 140, 248, 0.28);
+}
+
+.dark [data-mode='image'] {
+  --bubble-user-bg: rgba(217, 70, 239, 0.2);
+  --bubble-user-border: rgba(240, 171, 252, 0.26);
+}
+
+.dark [data-mode='research'] {
+  --bubble-user-bg: rgba(20, 184, 166, 0.2);
+  --bubble-user-border: rgba(45, 212, 191, 0.26);
+}
+
+/* ================================================================
+   Ambient — 极光环境背景（随模式呼吸）
+   ================================================================ */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  width: 65vw;
+  height: 65vw;
+  border-radius: 9999px;
+  filter: blur(110px);
+  transition: background 1.4s var(--ease-smooth);
+}
+
+.aurora::before {
+  top: -22vw;
+  left: -12vw;
+  background: var(--aurora-1);
+}
+
+.aurora::after {
+  bottom: -28vw;
+  right: -16vw;
+  background: var(--aurora-2);
+}
+
+.dark .aurora::before {
+  background: var(--aurora-1-dark);
+}
+
+.dark .aurora::after {
+  background: var(--aurora-2-dark);
+}
+
+body {
+  background: linear-gradient(145deg, #f2f4f7 0%, #e9edf2 45%, #f4f0f3 100%);
+}
+
+.dark body {
+  background: linear-gradient(145deg, #0b1120 0%, #131c2e 45%, #14101f 100%);
+}
+
+/* ================================================================
+   Glass Surfaces
+   ================================================================ */
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+}
+
+/* ================================================================
+   Reset & Base
+   ================================================================ */
 
 html,
 body,
@@ -18,8 +148,10 @@ body,
 }
 
 body {
-  -webkit-tap-highlight-color: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
 }
 
@@ -35,12 +167,89 @@ textarea {
   width: 5px;
   height: 5px;
 }
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
 *::-webkit-scrollbar-thumb {
-  border-radius: 3px;
-  background: rgba(128, 128, 128, 0.4);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.25);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
 }
 
-/* 思考中动画：三个跳动的点 */
+::selection {
+  background: rgba(99, 102, 241, 0.14);
+}
+
+/* iOS 安全区 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ================================================================
+   Typography — AI Body (Markdown)
+   ================================================================ */
+
+.markdown-body {
+  overflow-wrap: break-word;
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+
+.markdown-body pre {
+  margin: 0;
+}
+
+.markdown-body pre code {
+  display: block;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.markdown-body code:not(pre code) {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.87em;
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+}
+
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+/* ================================================================
+   Animations
+   ================================================================ */
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes bounce-dot {
   0%,
   80%,
@@ -53,6 +262,27 @@ textarea {
     opacity: 1;
   }
 }
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(3vw, 2vw) scale(1.06);
+  }
+}
+
 .thinking-dot {
   animation: bounce-dot 1.2s ease-in-out infinite;
 }
@@ -63,37 +293,43 @@ textarea {
   animation-delay: 0.3s;
 }
 
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 .fade-in-up {
-  animation: fade-in-up 0.25s ease-out;
+  animation: fade-in-up 0.35s var(--ease-smooth) both;
 }
 
-/* Markdown 正文微调 */
-.markdown-body {
-  overflow-wrap: break-word;
+.scale-in {
+  animation: scale-in 0.22s var(--ease-smooth) both;
 }
-.markdown-body pre {
-  margin: 0;
+
+.cursor-blink {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.6;
+  animation: blink 1s ease-in-out infinite;
 }
-.markdown-body pre code {
-  display: block;
-  padding: 0.9rem 1rem;
-  overflow-x: auto;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  background: transparent;
+
+.aurora::before,
+.aurora::after {
+  animation: aurora-drift 18s ease-in-out infinite;
 }
-.markdown-body .katex-display {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 2px 0;
+.aurora::after {
+  animation-delay: -9s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot,
+  .aurora::before,
+  .aurora::after,
+  .cursor-blink {
+    animation: none;
+  }
+  .fade-in-up,
+  .scale-in {
+    animation-duration: 0.01s;
+  }
 }
