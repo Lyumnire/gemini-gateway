@@ -30,7 +30,7 @@
 		# 其余路径：密码认证（浏览器弹出账号密码框）
 		# 密码哈希由 scripts/gen_env.py 直接写入 basic_auth 位置
 		basic_auth {
-			{$GATEWAY_USER} $2a$14$VTKUwoBuNiJJ0DFI6P8A/.jWrKr4Q6ynhjrsYbfZF2.8qjD.gKKZq
+			{$GATEWAY_USER} $2a$14$Bc87Sk1Bd7V8vdlbhkpnxuxjVm.2f3OUuwN4yObrqkBnWIljC1J9O
 		}
 
 		# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
