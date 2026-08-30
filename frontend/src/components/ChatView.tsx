@@ -8,7 +8,7 @@
  * 三种产物都留在同一对话流里，无缝衔接。
  */
 
-import {
+import React, {
   memo, useCallback, useEffect, useRef, useState,
   type KeyboardEvent, type ChangeEvent,
 } from 'react';
@@ -118,13 +118,15 @@ const Bubble = memo(function Bubble({
     setTimeout(() => setCopied(false), 1500);
   }, [onCopy]);
 
-  // 等待反馈计时（流式中尚无内容时显示）
+  // 等待反馈计时（仅在等待期运行；正文出现后停止，避免每秒重渲染大段 Markdown）
   const [elapsed, setElapsed] = useState(0);
+  const waitingPhase = Boolean(msg.streaming && !msg.content && !msg.thinking && !msg.image && !msg.research);
   useEffect(() => {
-    if (!msg.streaming) { setElapsed(0); return; }
+    if (!waitingPhase) return;
+    setElapsed(0);
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
-  }, [msg.streaming]);
+  }, [waitingPhase]);
 
   if (isUser) {
     return (
@@ -167,8 +169,7 @@ const Bubble = memo(function Bubble({
   // ---- 助手消息 ----
 
   // 等待反馈：后端为"完成后切块下发"的伪流式，首字前需要等待
-  const waiting = msg.streaming && !msg.content && !msg.thinking && !msg.image && !msg.research;
-  if (waiting) {
+  if (waitingPhase) {
     return (
       <div style={{ width: '100%', display: 'flex', minWidth: 0 }} className="msg-enter">
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -430,6 +431,39 @@ function useReportDownload() {
 }
 
 // ------------------------------------------------------------------
+// ViewErrorBoundary — 渲染异常兜底（防整树卸载白屏）
+// ------------------------------------------------------------------
+
+class ViewErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#64748b' }}>
+          <div style={{ fontSize: 15, fontWeight: 500, color: '#b91c1c' }}>渲染出错：{this.state.error.message}</div>
+          <button
+            type="button"
+            onClick={() => this.setState({ error: null })}
+            style={{ padding: '6px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: '#0f172a', color: '#fff', fontSize: 13 }}
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ------------------------------------------------------------------
 // ChatView
 // ------------------------------------------------------------------
 
@@ -545,10 +579,12 @@ export function ChatView({
       reqModel = 'gemini-3-flash-extended';
     }
 
-    const finish = (patch: Partial<Msg>) => {
+    const finish = (patch: Partial<Msg>, opts: { persist?: boolean } = {}) => {
       setMessages((prev) => {
-        const next = prev.map((m) => (m.id === botMsg.id ? { ...m, streaming: false, ...patch } : m));
-        persistMessages(activeSessionId, next);
+        const next = prev.map((m) => (m.id === botMsg.id
+          ? { ...m, ...patch, streaming: opts.persist ? false : m.streaming }
+          : m));
+        if (opts.persist) persistMessages(activeSessionId, next);
         return next;
       });
     };
@@ -578,7 +614,7 @@ export function ChatView({
             ? { ...m, research: { ...state, done: false } }
             : m)));
         }
-        finish({ research: { ...state, done: true } });
+        finish({ research: { ...state, done: true }, streaming: false }, { persist: true });
       }
       // ---- 普通对话（含图片视觉 / 文本附件）----
       else {
@@ -592,8 +628,8 @@ export function ChatView({
         ];
 
         let acc = '';
-        void reqModel;
         let thinking = '';
+        let lastFlush = 0;
         for await (const event of api.chatCompletion(
           reqModel, history, 2048, 0.7,
           attachment?.type === 'image' ? attachment.dataUrl : undefined,
@@ -601,21 +637,21 @@ export function ChatView({
         )) {
           if (event.type === 'content') {
             acc += event.text;
-            const snap = acc;
-            finish({ content: snap });
+            const now = Date.now();
+            if (now - lastFlush >= 120) { lastFlush = now; finish({ content: acc }); }
           } else if (event.type === 'thinking') {
             thinking += event.text;
-            const snap = thinking;
-            setMessages((prev) => prev.map((m) => (m.id === botMsg.id ? { ...m, thinking: snap } : m)));
+            const now = Date.now();
+            if (now - lastFlush >= 120) { lastFlush = now; finish({ thinking }); }
           }
         }
-        finish({ content: acc });
+        finish({ content: acc, thinking, streaming: false }, { persist: true });
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        finish({});
+        finish({ streaming: false }, { persist: true });
       } else {
-        finish({ content: `加载失败: ${e.message}`, error: true });
+        finish({ content: `加载失败: ${e.message}`, error: true, streaming: false }, { persist: true });
       }
     } finally {
       abortRef.current = null;
@@ -706,7 +742,7 @@ export function ChatView({
     thinkingType: 'controllable',
   };
 
-  return messages.length === 0 ? (
+  const emptyView = (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} className="animate-fade-in">
       <div style={{ textAlign: 'center', marginBottom: 48 }} className="animate-fade-in-up stagger-1">
         <h1 style={{ fontSize: 32, fontWeight: 600, color: '#334155', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
@@ -722,7 +758,9 @@ export function ChatView({
         </div>
       </div>
     </div>
-  ) : (
+  );
+
+  const chatStream = (
     <div className="flex-1 flex flex-col min-h-0">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="w-full flex justify-center">
@@ -752,4 +790,6 @@ export function ChatView({
       </div>
     </div>
   );
+
+  return <ViewErrorBoundary>{messages.length === 0 ? emptyView : chatStream}</ViewErrorBoundary>;
 }
