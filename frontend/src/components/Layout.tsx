@@ -11,21 +11,10 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import {
-  MessageSquare, ImageIcon, Telescope,
-  Plus, Trash2,
-} from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-
-export type Modality = 'llm' | 'image' | 'research';
-
-const NAV: { key: Modality; label: string; icon: typeof MessageSquare }[] = [
-  { key: 'llm', label: '智能对话', icon: MessageSquare },
-  { key: 'image', label: 'AI 绘图', icon: ImageIcon },
-  { key: 'research', label: '深度研究', icon: Telescope },
-];
 
 /** 会话条目 */
 export interface SessionEntry {
@@ -41,11 +30,8 @@ export interface SessionEntry {
 // ------------------------------------------------------------------
 
 function Sidebar({
-  active, onSelect,
   sessions, currentSessionId, onSessionSelect, onSessionDelete, onNewChat,
 }: {
-  active: Modality;
-  onSelect: (m: Modality) => void;
   sessions: SessionEntry[];
   currentSessionId: number | null;
   onSessionSelect: (id: number) => void;
@@ -78,46 +64,6 @@ function Sidebar({
 
       {/* Divider */}
       <div style={{ height: '1px', margin: '8px 10px', background: 'linear-gradient(to right, transparent, rgba(148,163,184,0.25), transparent)' }} />
-
-      {/* Nav */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '4px 0', flexShrink: 0 }}>
-        <div style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.12em', padding: '8px 12px 10px' }}>
-          功能
-        </div>
-        {NAV.map(({ key, label, icon: Icon }) => {
-          const isActive = active === key;
-          return (
-            <button
-              key={key}
-              onClick={() => onSelect(key)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                width: '100%',
-                padding: '9px 12px',
-                fontSize: '14px',
-                fontWeight: 500,
-                borderRadius: '10px',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                background: isActive ? 'rgba(15,23,42,0.06)' : 'transparent',
-                color: isActive ? '#1e293b' : '#64748b',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.4)';
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <Icon size={16} style={{ color: isActive ? '#1e293b' : '#94a3b8', flexShrink: 0 }} />
-              {label}
-            </button>
-          );
-        })}
-      </nav>
 
       {/* Divider */}
       <div style={{ height: '1px', margin: '8px 10px', background: 'linear-gradient(to right, transparent, rgba(148,163,184,0.25), transparent)' }} />
@@ -347,13 +293,10 @@ function Header({
 // ------------------------------------------------------------------
 
 export function Layout({
-  activeModality, onModalityChange,
   models, selectedModel, onModelChange,
   sessions, currentSessionId, onSessionSelect, onSessionDelete, onNewChat,
   children,
 }: {
-  activeModality: Modality;
-  onModalityChange: (m: Modality) => void;
   models: Record<string, unknown>;
   selectedModel: string;
   onModelChange: (m: string) => void;
@@ -368,8 +311,6 @@ export function Layout({
   return (
     <div className="h-screen w-screen flex overflow-hidden">
       <Sidebar
-        active={activeModality}
-        onSelect={onModalityChange}
         sessions={sessions}
         currentSessionId={currentSessionId}
         onSessionSelect={onSessionSelect}
