@@ -15,7 +15,14 @@ export function useModels() {
 
   useEffect(() => {
     api.listModels()
-      .then(setModels)
+      .then((list) => {
+        // 剔除已退役的 2.x 文本模型（保留 nano banana：gemini-2.5-flash-image）
+        const retired = /gemini-2\.0-|gemini-2\.5-flash$|gemini-2\.5-flash-preview|tts/;
+        list.llm = Object.fromEntries(
+          Object.entries(list.llm || {}).filter(([id]) => !retired.test(id)),
+        );
+        setModels(list);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);

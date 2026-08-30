@@ -244,16 +244,19 @@ export function Composer({
             aria-hidden
           />
           <div
-            className="glass-strong scale-in"
+            className="scale-in"
             style={{
               position: 'absolute',
               bottom: 'calc(100% + 8px)',
               left: 0,
               zIndex: 20,
-              width: '230px',
+              width: '240px',
               borderRadius: '16px',
               overflow: 'hidden',
               padding: '5px',
+              background: '#ffffff',
+              border: '1px solid rgba(148,163,184,0.25)',
+              boxShadow: '0 12px 40px rgba(15,23,42,0.14)',
             }}
           >
             <button
@@ -266,7 +269,7 @@ export function Composer({
                 cursor: tool ? 'not-allowed' : 'pointer', background: 'transparent',
                 color: tool ? '#cbd5e1' : '#334155', transition: 'background 0.15s',
               }}
-              onMouseEnter={(e) => { if (!tool) e.currentTarget.style.background = 'rgba(15,23,42,0.05)'; }}
+              onMouseEnter={(e) => { if (!tool) e.currentTarget.style.background = 'rgba(15,23,42,0.06)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
               <FileText size={16} style={{ color: tool ? '#cbd5e1' : '#94a3b8', flexShrink: 0 }} />

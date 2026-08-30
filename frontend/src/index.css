@@ -330,3 +330,34 @@ body {
 .cursor-blink {
   animation: blink 1s ease-in-out infinite;
 }
+
+/* ================================================================
+   Syntax Highlighting — github-dark 色板（显式声明，防主题加载顺序问题）
+   ================================================================ */
+
+.md-body .hljs-comment, .md-body .hljs-quote,
+.markdown-body .hljs-comment, .markdown-body .hljs-quote { color: #8b949e; font-style: italic; }
+
+.md-body .hljs-keyword, .md-body .hljs-selector-tag, .md-body .hljs-selector-id, .md-body .hljs-literal,
+.markdown-body .hljs-keyword, .markdown-body .hljs-selector-tag, .markdown-body .hljs-selector-id, .markdown-body .hljs-literal { color: #ff7b72; }
+
+.md-body .hljs-string, .md-body .hljs-doctag, .md-body .hljs-addition,
+.markdown-body .hljs-string, .markdown-body .hljs-doctag, .markdown-body .hljs-addition { color: #a5d6ff; }
+
+.md-body .hljs-number, .md-body .hljs-symbol,
+.markdown-body .hljs-number, .markdown-body .hljs-symbol { color: #79c0ff; }
+
+.md-body .hljs-title, .md-body .hljs-section, .md-body .hljs-name, .md-body .hljs-selector-class,
+.markdown-body .hljs-title, .markdown-body .hljs-section, .markdown-body .hljs-name, .markdown-body .hljs-selector-class { color: #7ee787; }
+
+.md-body .hljs-built_in, .md-body .hljs-type, .md-body .hljs-class .hljs-title,
+.markdown-body .hljs-built_in, .markdown-body .hljs-type, .markdown-body .hljs-class .hljs-title { color: #ffa657; }
+
+.md-body .hljs-attr, .md-body .hljs-attribute, .md-body .hljs-variable, .md-body .hljs-template-variable,
+.markdown-body .hljs-attr, .markdown-body .hljs-attribute, .markdown-body .hljs-variable, .markdown-body .hljs-template-variable { color: #79c0ff; }
+
+.md-body .hljs-meta, .md-body .hljs-link,
+.markdown-body .hljs-meta, .markdown-body .hljs-link { color: #79c0ff; }
+
+.md-body .hljs-emphasis { font-style: italic; }
+.md-body .hljs-strong { font-weight: 600; }
