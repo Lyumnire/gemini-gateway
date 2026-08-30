@@ -118,7 +118,9 @@ const Bubble = memo(function Bubble({
     setTimeout(() => setCopied(false), 1500);
   }, [onCopy]);
 
-  // 等待反馈计时（仅在等待期运行；正文出现后停止，避免每秒重渲染大段 Markdown）
+  // ---- 全部 hooks 前置（条件 return 之前，保证每次渲染调用顺序恒定）----
+
+  // 等待反馈计时（仅在等待期运行）
   const [elapsed, setElapsed] = useState(0);
   const waitingPhase = Boolean(msg.streaming && !msg.content && !msg.thinking && !msg.image && !msg.research);
   useEffect(() => {
@@ -127,6 +129,21 @@ const Bubble = memo(function Bubble({
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [waitingPhase]);
+
+  // 思考面板开关（思考中自动展开，正文出现自动折叠）
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+
+  // 思考内容派生（不依赖 hooks，可安全在 return 前计算）
+  const parsed = parseThinkingMessage(msg.content);
+  const streamThought = enableThinking ? (msg.thinking ?? '') : '';
+  const thought = streamThought.length > 0 ? streamThought : (enableThinking ? parsed.thought : '');
+  const isThinking = Boolean(msg.streaming && streamThought && !msg.content);
+  const hasThinking = thought.length > 0;
+
+  useEffect(() => {
+    if (isThinking) setThinkingOpen(true);
+    else if (hasThinking && !isThinking) setThinkingOpen(false);
+  }, [isThinking, hasThinking]);
 
   if (isUser) {
     return (
@@ -319,18 +336,8 @@ const Bubble = memo(function Bubble({
     );
   }
 
-  // ---- 普通文本（含思考面板）----
-  const parsed = parseThinkingMessage(msg.content);
-  const streamThought = enableThinking ? (msg.thinking ?? '') : '';
-  const thought = streamThought.length > 0 ? streamThought : (enableThinking ? parsed.thought : '');
-  const isThinking = Boolean(msg.streaming && streamThought && !msg.content);
-  const hasThinking = thought.length > 0;
-  const [thinkingOpen, setThinkingOpen] = useState(isThinking);
+  // ---- 普通文本（含思考面板；派生值已在顶部计算）----
 
-  useEffect(() => {
-    if (isThinking) setThinkingOpen(true);
-    else if (hasThinking && !isThinking) setThinkingOpen(false);
-  }, [isThinking, hasThinking]);
 
   return (
     <div style={{ width: '100%', display: 'flex', alignItems: 'flex-start', minWidth: 0 }} className="msg-enter">
