@@ -7,13 +7,6 @@
 }
 
 :80 {
-	# 全站密码认证（浏览器弹出账号密码框）
-	# 密码哈希由 scripts/gen_env.py 直接写入下方 GATEWAY_PASSWORD_HASH_BCRYPT 位置
-	# （不走环境变量：compose 会把 bcrypt 哈希中的 $ 误当变量插值）
-	basic_auth {
-		{$GATEWAY_USER} $2a$14$aPF/Rd9mQBRHjiLofN5TjOfACAkz3tn2OtCnz.BZPKQuopbums5fS
-	}
-
 	encode zstd gzip
 
 	header {
@@ -24,25 +17,33 @@
 		Cache-Control "no-store"
 	}
 
-	# 公开静态资源（PWA manifest 抓取不带认证凭据，需豁免；均无敏感信息）
-	@public {
-		path /manifest.webmanifest /favicon.svg /pwa-192.png /pwa-512.png
-	}
-	handle @public {
-		root * /srv/www
-		file_server
-	}
+	# route：强制按书写顺序执行（Caddy 默认 basic_auth 恒先于 handle，
+	# 会把 PWA manifest 的免认证抓取也拦下）
+	route {
+		# 公开静态资源（无敏感信息）：PWA manifest 抓取不带认证凭据，必须豁免
+		@public path /manifest.webmanifest /favicon.svg /pwa-192.png /pwa-512.png
+		handle @public {
+			root * /srv/www
+			file_server
+		}
 
-	# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
-	@api path /openai/* /claude/* /gemini/* /health /docs /openapi.json
-	handle @api {
-		reverse_proxy gemini-api:4981
-	}
+		# 其余路径：密码认证（浏览器弹出账号密码框）
+		# 密码哈希由 scripts/gen_env.py 直接写入 basic_auth 位置
+		basic_auth {
+			{$GATEWAY_USER} $2a$14$VTKUwoBuNiJJ0DFI6P8A/.jWrKr4Q6ynhjrsYbfZF2.8qjD.gKKZq
+		}
 
-	# React 前端静态文件（SPA 回退到 index.html）
-	handle {
-		root * /srv/www
-		try_files {path} /index.html
-		file_server
+		# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
+		@api path /openai/* /claude/* /gemini/* /health /docs /openapi.json
+		handle @api {
+			reverse_proxy gemini-api:4981
+		}
+
+		# React 前端静态文件（SPA 回退到 index.html）
+		handle {
+			root * /srv/www
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }
