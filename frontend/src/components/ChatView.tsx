@@ -498,6 +498,13 @@ export function ChatView({
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // 思考开关：Flash 开启时路由到 Extended Thinking 变体
+    let reqModel = model;
+    if (enableThinking && !activeTool && model === 'gemini-3-flash-preview') {
+      reqModel = 'gemini-3-flash-extended';
+    }
+
     const finish = (patch: Partial<Msg>) => {
       setMessages((prev) => {
         const next = prev.map((m) => (m.id === botMsg.id ? { ...m, streaming: false, ...patch } : m));
@@ -545,9 +552,10 @@ export function ChatView({
         ];
 
         let acc = '';
+        void reqModel;
         let thinking = '';
         for await (const event of api.chatCompletion(
-          model, history, 2048, 0.7,
+          reqModel, history, 2048, 0.7,
           attachment?.type === 'image' ? attachment.dataUrl : undefined,
           undefined, controller.signal, enableThinking, activeSessionId,
         )) {
