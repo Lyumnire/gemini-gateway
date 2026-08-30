@@ -1,10 +1,16 @@
 /**
- * Composer — 官网式 + 工具菜单：上传文件 / 生成图片 / 深度研究。
- * 激活的工具以胶囊标签形式显示在输入框左侧，点击 ✕ 取消。
+ * Composer — OmniHermit「Gemini 级别大气悬浮输入框」原样保留，
+ * 仅在 + 按钮上叠加官网式工具菜单：上传文件 / 生成图片 / 深度研究。
+ * 激活的工具以胶囊标签显示在 + 的位置（点击 ✕ 取消）。
  */
 
-import { useRef, useState, type KeyboardEvent, type ChangeEvent } from 'react';
-import { ArrowUp, Square, ImageIcon, Telescope, X, Check } from 'lucide-react';
+import {
+  useCallback, useEffect, useRef, useState,
+  type KeyboardEvent, type ChangeEvent, type DragEvent,
+} from 'react';
+import {
+  ArrowUp, Square, Plus, X, FileText, ImageIcon, Telescope, Check,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -17,6 +23,7 @@ export interface AttachedFile {
   dataUrl?: string;
   /** 文本文件的内容（内联进消息） */
   text?: string;
+  previewUrl?: string;
 }
 
 interface Props {
@@ -31,6 +38,10 @@ interface Props {
   onKeyDown: (e: KeyboardEvent) => void;
   onSend: () => void;
   onStop: () => void;
+  compact?: boolean;
+  enableThinking?: boolean;
+  onToggleThinking?: () => void;
+  thinkingType?: string;
 }
 
 const TOOL_META: Record<Tool, { label: string; icon: typeof ImageIcon }> = {
@@ -40,22 +51,55 @@ const TOOL_META: Record<Tool, { label: string; icon: typeof ImageIcon }> = {
 
 export function Composer({
   tool, attached, streaming, input, onToolChange, onAttach, onDetach,
-  onInput, onKeyDown, onSend, onStop,
+  onInput, onKeyDown, onSend, onStop, compact,
+  enableThinking, onToggleThinking, thinkingType = 'controllable',
 }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [isMultiline, setIsMultiline] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const canSend = input.trim() && !streaming;
+  useEffect(() => {
+    if (!input && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      setIsMultiline(false);
+    }
+  }, [input]);
 
-  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // 检测是否多行：输入包含换行符 或 textarea 高度超过单行
+  const checkMultiline = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) {
+      const hasNewline = input.includes('\n');
+      const isTooTall = el.scrollHeight > 40;
+      setIsMultiline(hasNewline || isTooTall);
+    }
+  }, [input]);
+
+  // + 按钮现在打开工具菜单（上传文件 / 生成图片 / 深度研究）
+  const handlePlusClick = useCallback(() => {
+    setMenuOpen((v) => !v);
+  }, []);
+
+  const handleMenuUpload = useCallback(() => {
+    fileInputRef.current?.click();
+    setMenuOpen(false);
+  }, []);
+
+  const handleMenuTool = useCallback((t: Tool) => {
+    onToolChange(tool === t ? null : t);
+    setMenuOpen(false);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [onToolChange, tool]);
+
+  const processFile = useCallback((file: File) => {
+    if (tool) return; // 工具激活时不接受附件
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = () =>
-        onAttach({ file, type: 'image', dataUrl: reader.result as string });
+        onAttach({ file, type: 'image', dataUrl: reader.result as string, previewUrl: reader.result as string });
       reader.readAsDataURL(file);
     } else if (/\.(txt|md)$/i.test(file.name)) {
       const reader = new FileReader();
@@ -63,49 +107,249 @@ export function Composer({
         onAttach({ file, type: 'text', text: String(reader.result || '') });
       reader.readAsText(file);
     }
-    setMenuOpen(false);
-  };
+  }, [onAttach, tool]);
 
-  const pickTool = (t: Tool) => {
-    onToolChange(tool === t ? null : t);
-    setMenuOpen(false);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  };
+  const handleFileInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) processFile(file);
+  }, [processFile]);
+
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
+  }, [processFile]);
+
+  const canSend = (input.trim() || (!tool && attached)) && !streaming;
+
+  // 工具胶囊（激活时替代 + 按钮的位置）
+  const ToolChip = (
+    <button
+      type="button"
+      onClick={() => onToolChange(null)}
+      title="取消工具"
+      style={{
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        height: '32px',
+        padding: '0 12px',
+        borderRadius: '16px',
+        border: 'none',
+        cursor: 'pointer',
+        background: '#0f172a',
+        color: '#ffffff',
+        fontSize: '13px',
+        fontWeight: 500,
+        transition: 'all 0.15s ease',
+      }}
+    >
+      {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
+      {tool === 'image' ? 'Images' : 'Deep Research'}
+      <X size={13} style={{ opacity: 0.7 }} />
+    </button>
+  );
+
+  // + 按钮（工具菜单入口）
+  const PlusButton = (
+    <button
+      type="button"
+      onClick={handlePlusClick}
+      style={{
+        flexShrink: 0,
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: 'none',
+        cursor: 'pointer',
+        background: menuOpen ? '#0f172a' : 'transparent',
+        color: menuOpen ? '#ffffff' : '#94a3b8',
+        transition: 'all 0.15s',
+      }}
+      tabIndex={-1}
+      title="工具菜单"
+    >
+      <Plus size={18} strokeWidth={2} style={{ transform: menuOpen ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s ease' }} />
+    </button>
+  );
+
+  // 思考开关（omnihermit 原样）
+  const ThinkingToggle = (
+    <>
+      <span style={{ fontSize: '13px', color: enableThinking ? '#1e293b' : '#94a3b8', fontWeight: 500, flexShrink: 0, userSelect: 'none' }}>
+        思考
+      </span>
+      <button
+        type="button"
+        onClick={onToggleThinking}
+        style={{
+          flexShrink: 0,
+          height: '28px',
+          padding: '0',
+          borderRadius: '14px',
+          border: 'none',
+          cursor: 'pointer',
+          background: enableThinking ? '#1e293b' : '#e2e8f0',
+          transition: 'background 0.2s ease',
+          display: 'flex',
+          alignItems: 'center',
+          position: 'relative',
+          width: '48px',
+        }}
+        title={enableThinking ? '思考模式：开' : '思考模式：关'}
+      >
+        <div style={{
+          width: '22px',
+          height: '22px',
+          borderRadius: '50%',
+          background: '#ffffff',
+          position: 'absolute',
+          top: '3px',
+          left: enableThinking ? '23px' : '3px',
+          transition: 'left 0.2s ease',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+        }} />
+      </button>
+    </>
+  );
+
+  const SendButton = (
+    <button
+      type="button"
+      style={{
+        flexShrink: 0,
+        width: '36px',
+        height: '36px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: 'none',
+        cursor: canSend || streaming ? 'pointer' : 'not-allowed',
+        background: streaming ? 'transparent' : canSend ? '#0f172a' : 'transparent',
+        color: streaming ? '#f87171' : canSend ? '#ffffff' : '#cbd5e1',
+        transition: 'all 0.2s ease',
+        boxShadow: canSend && !streaming ? '0 2px 8px rgba(15,23,42,0.2)' : 'none',
+      }}
+      disabled={!canSend && !streaming}
+      onClick={streaming ? onStop : onSend}
+    >
+      {streaming ? <Square size={14} /> : <ArrowUp size={16} strokeWidth={2.5} />}
+    </button>
+  );
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      {/* + 工具菜单 */}
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      style={{ position: 'relative', width: '100%' }}
+    >
+      {/* 拖拽覆盖层 */}
+      {dragOver && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: '-4px',
+            borderRadius: '32px',
+            border: '2px dashed rgba(100,116,139,0.4)',
+            background: 'rgba(148,163,184,0.08)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 500 }}>
+            松开以附加图片
+          </span>
+        </div>
+      )}
+
+      {/* 工具菜单浮层 */}
       {menuOpen && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="glass-strong scale-in absolute bottom-full left-0 z-20 mb-2 w-60 overflow-hidden rounded-2xl shadow-lg">
-            <label
-              className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm text-slate-700 transition-colors hover:bg-slate-900/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.06]"
-              onClick={() => fileInputRef.current?.click()}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+            onClick={() => setMenuOpen(false)}
+            aria-hidden
+          />
+          <div
+            className="glass-strong scale-in"
+            style={{
+              position: 'absolute',
+              bottom: 'calc(100% + 8px)',
+              left: 0,
+              zIndex: 20,
+              width: '230px',
+              borderRadius: '16px',
+              overflow: 'hidden',
+              padding: '5px',
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleMenuUpload}
+              disabled={!!tool}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                padding: '9px 12px', fontSize: 14, borderRadius: 11, border: 'none',
+                cursor: tool ? 'not-allowed' : 'pointer', background: 'transparent',
+                color: tool ? '#cbd5e1' : '#334155', transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => { if (!tool) e.currentTarget.style.background = 'rgba(15,23,42,0.05)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
-              <span className="text-slate-400">📎</span>
+              <FileText size={16} style={{ color: tool ? '#cbd5e1' : '#94a3b8', flexShrink: 0 }} />
               上传文件
-              <span className="ml-auto text-[10px] text-slate-400">图片 / TXT</span>
-            </label>
-            <div className="mx-3 my-1 h-px bg-slate-900/[0.06] dark:bg-white/[0.08]" />
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: tool ? '#cbd5e1' : '#94a3b8' }}>
+                图片 / TXT / MD
+              </span>
+            </button>
+            <div style={{ height: 1, margin: '4px 8px', background: 'linear-gradient(to right, transparent, rgba(148,163,184,0.25), transparent)' }} />
             {(['image', 'research'] as Tool[]).map((t) => {
-              const Icon = TOOL_META[t].icon;
+              const { label, icon: Icon } = { label: TOOL_META[t].label, icon: TOOL_META[t].icon };
               const active = tool === t;
               return (
                 <button
                   key={t}
                   type="button"
-                  onClick={() => pickTool(t)}
-                  className={cn(
-                    'flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors',
-                    active
-                      ? 'bg-slate-900/[0.05] text-slate-900 dark:bg-white/[0.08] dark:text-white'
-                      : 'text-slate-700 hover:bg-slate-900/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.06]',
-                  )}
+                  onClick={() => handleMenuTool(t)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                    padding: '9px 12px', fontSize: 14, borderRadius: 11, border: 'none',
+                    cursor: 'pointer',
+                    background: active ? 'rgba(15,23,42,0.06)' : 'transparent',
+                    color: active ? '#1e293b' : '#334155', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(15,23,42,0.04)'; }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <Icon className={active ? 'h-4 w-4 text-indigo-500' : 'h-4 w-4 text-slate-400'} />
-                  {TOOL_META[t].label}
-                  {active && <Check className="ml-auto h-4 w-4 text-indigo-500" />}
+                  <Icon size={16} style={{ color: active ? '#1e293b' : '#94a3b8', flexShrink: 0 }} />
+                  {label}
+                  {active && <Check size={15} style={{ marginLeft: 'auto', color: '#1e293b' }} />}
                 </button>
               );
             })}
@@ -113,99 +357,121 @@ export function Composer({
         </>
       )}
 
-      {/* 隐藏文件输入：图片 + 文本 */}
+      {/* 附件预览（omnihermit 原版 FilePreview 行为） */}
+      {attached && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 12px',
+            marginBottom: 8,
+            background: 'rgba(255,255,255,0.6)',
+            backdropFilter: 'blur(12px)',
+            borderRadius: 14,
+            border: '1px solid rgba(148,163,184,0.12)',
+          }}
+        >
+          {attached.type === 'image' && (attached.previewUrl || attached.dataUrl) ? (
+            <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9' }}>
+              <img src={attached.previewUrl || attached.dataUrl} alt={attached.file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+          ) : (
+            <div style={{ width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', flexShrink: 0 }}>
+              <FileText size={18} style={{ color: '#64748b' }} />
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {attached.file.name}
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
+              {(attached.file.size / 1024).toFixed(1)} KB
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onDetach}
+            style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(148,163,184,0.1)', border: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(148,163,184,0.2)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(148,163,184,0.1)'; }}
+          >
+            <X size={14} style={{ color: '#64748b' }} />
+          </button>
+        </div>
+      )}
+
+      {/* 隐藏的文件输入 */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*,.txt,.md"
-        className="hidden"
-        onChange={handleFile}
+        style={{ display: 'none' }}
+        onChange={handleFileInputChange}
       />
 
-      {/* 输入舱主体 */}
+      {/* 输入框主体 — omnihermit 原版尺寸 */}
       <div
-        className="w-full rounded-[28px] border border-white/65 bg-white/72 px-4 py-2.5 shadow-[0_2px_20px_rgba(0,0,0,0.04),0_8px_40px_rgba(0,0,0,0.03)] backdrop-blur-2xl transition-shadow dark:border-white/10 dark:bg-slate-800/60"
+        style={{
+          width: '100%',
+          background: 'rgba(255,255,255,0.72)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255,255,255,0.65)',
+          borderRadius: compact ? '28px' : '32px',
+          padding: compact ? '6px 12px 6px 16px' : '10px 12px 10px 16px',
+          display: 'flex',
+          flexDirection: isMultiline ? 'column' : 'row',
+          alignItems: isMultiline ? 'stretch' : 'center',
+          gap: isMultiline ? '4px' : '8px',
+          transition: 'all 0.3s ease',
+          boxShadow: focused
+            ? '0 0 0 1px rgba(148,163,184,0.15), 0 8px 40px rgba(0,0,0,0.08), 0 20px 60px rgba(0,0,0,0.05)'
+            : '0 2px 20px rgba(0,0,0,0.04), 0 8px 40px rgba(0,0,0,0.03)',
+        }}
       >
-        {/* 工具胶囊 / 附件预览 */}
-        {(tool || attached) && (
-          <div className="mb-1.5 flex items-center gap-2">
-            {tool && (
-              <span className="flex items-center gap-1.5 rounded-full bg-slate-900/[0.06] px-3 py-1.5 text-xs font-medium text-slate-700 dark:bg-white/[0.1] dark:text-slate-200">
-                {tool === 'image' ? <ImageIcon className="h-3.5 w-3.5" /> : <Telescope className="h-3.5 w-3.5" />}
-                {tool === 'image' ? 'Images' : 'Deep Research'}
-                <button
-                  type="button"
-                  aria-label="取消工具"
-                  onClick={() => onToolChange(null)}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-slate-900/10 dark:hover:bg-white/20"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-            {attached && (
-              <span className="flex max-w-[240px] items-center gap-1.5 truncate rounded-full bg-slate-900/[0.06] px-3 py-1.5 text-xs text-slate-700 dark:bg-white/[0.1] dark:text-slate-200">
-                📎 {attached.file.name}
-                <button
-                  type="button"
-                  aria-label="移除附件"
-                  onClick={onDetach}
-                  className="rounded-full p-0.5 hover:bg-slate-900/10 dark:hover:bg-white/20"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
+        {/* 单行：工具胶囊（激活时）或 + 按钮 */}
+        {!isMultiline && (
+          tool ? ToolChip : PlusButton
+        )}
+
+        {/* 文本输入区 */}
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => { onInput(e); checkMultiline(); }}
+          onKeyDown={onKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={tool === 'image' ? '描述你想要的画面…' : tool === 'research' ? '想深入研究什么课题？' : '输入消息…'}
+          rows={1}
+          className={cn(
+            'w-full bg-transparent text-[15px] text-slate-800 placeholder-slate-400/50',
+            'resize-none focus:outline-none leading-[1.6] min-h-[28px]',
+            compact ? 'py-0.5' : 'py-1',
+          )}
+          style={{ maxHeight: 160, flex: isMultiline ? undefined : 1 }}
+          disabled={streaming}
+        />
+
+        {/* 多行时：底部按钮栏 */}
+        {isMultiline && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+            {tool ? ToolChip : PlusButton}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {(thinkingType === 'controllable' || thinkingType === 'forced') && ThinkingToggle}
+              {SendButton}
+            </div>
           </div>
         )}
 
-        <div className="flex items-end gap-2">
-          {/* + 按钮 */}
-          <button
-            type="button"
-            aria-label="工具菜单"
-            disabled={streaming}
-            onClick={() => setMenuOpen((v) => !v)}
-            tabIndex={-1}
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40',
-              menuOpen
-                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
-                : 'text-slate-400 hover:bg-slate-900/[0.05] dark:hover:bg-white/[0.08]',
-            )}
-          >
-            {menuOpen ? <X className="h-5 w-5" /> : <span className="text-[20px] leading-none">+</span>}
-          </button>
-
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={onInput}
-            onKeyDown={onKeyDown}
-            placeholder={tool === 'image' ? '描述你想要的画面…' : tool === 'research' ? '想深入研究什么课题？' : '输入消息…'}
-            rows={1}
-            className="max-h-40 min-h-[28px] w-full flex-1 resize-none bg-transparent text-[15px] leading-[1.6] text-slate-800 placeholder-slate-400/50 focus:outline-none dark:text-slate-100 dark:placeholder-slate-500"
-            disabled={streaming}
-          />
-
-          <button
-            type="button"
-            aria-label={streaming ? '停止' : '发送'}
-            disabled={!canSend && !streaming}
-            onClick={streaming ? onStop : onSend}
-            style={{ boxShadow: canSend && !streaming ? '0 2px 10px rgba(15,23,42,0.25)' : 'none' }}
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all',
-              streaming
-                ? 'text-red-400'
-                : canSend
-                  ? 'bg-slate-900 text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
-                  : 'text-slate-300 dark:text-slate-600',
-            )}
-          >
-            {streaming ? <Square className="h-4 w-4" /> : <ArrowUp className="h-5 w-5" strokeWidth={2.5} />}
-          </button>
-        </div>
+        {/* 单行时：思考开关 + 发送按钮在右侧 */}
+        {!isMultiline && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {(thinkingType === 'controllable' || thinkingType === 'forced') && ThinkingToggle}
+            {SendButton}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -405,7 +405,7 @@ export function ChatView({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [enableThinking] = useState(true);
+  const [enableThinking, setEnableThinking] = useState(true);
   const [activeTool, setActiveTool] = useState<Tool | null>(null);
   const [attachedFile, setAttachedFile] = useState<import('./Composer').AttachedFile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -657,6 +657,9 @@ export function ChatView({
     onToolChange: setActiveTool,
     onAttach: handleAttach,
     onDetach: handleDetach,
+    enableThinking,
+    onToggleThinking: () => setEnableThinking((v) => !v),
+    thinkingType: 'controllable',
   };
 
   return messages.length === 0 ? (
