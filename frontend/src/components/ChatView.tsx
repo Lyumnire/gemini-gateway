@@ -188,28 +188,11 @@ const Bubble = memo(function Bubble({
   // 等待反馈：后端为"完成后切块下发"的伪流式，首字前需要等待
   if (waitingPhase) {
     return (
-      <div style={{ width: '100%', display: 'flex', minWidth: 0 }} className="msg-enter">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '14px 18px', borderRadius: 16, width: 'fit-content',
-              background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(148,163,184,0.12)',
-            }}
-          >
-            <Loader2 size={16} className="animate-spin" style={{ color: '#1e293b' }} />
-            <span style={{ fontSize: 14, color: '#475569' }}>
-              Gemini 正在生成回复…
-            </span>
-            <span style={{ fontSize: 12, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
-              {elapsed}s
-            </span>
-          </div>
-          <div style={{ marginTop: 6, fontSize: 11, color: '#94a3b8', paddingLeft: 4 }}>
-            响应完整生成后会逐行显示（约 5-60 秒，复杂问题更久）
-          </div>
-        </div>
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 4, paddingTop: 8 }} className="msg-enter">
+        <Loader2 size={14} className="animate-spin" style={{ color: '#94a3b8', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>
+          正在生成…{elapsed > 0 && <span style={{ marginLeft: 4, fontVariantNumeric: 'tabular-nums' }}>{elapsed}s</span>}
+        </span>
       </div>
     );
   }
