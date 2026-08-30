@@ -15,6 +15,8 @@ import {
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import {
   FileText, Copy, RotateCw, Check,
   ChevronDown, Brain, Loader2, Download, Globe,
@@ -232,7 +234,7 @@ const Bubble = memo(function Bubble({
                 研究报告
               </div>
               <div className="md-body" style={{ color: '#334155' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
               </div>
             </div>
           )}
@@ -324,7 +326,7 @@ const Bubble = memo(function Bubble({
             <CollapsibleContent style={{ overflow: 'hidden', transition: 'all 0.3s ease' }}>
               <div style={{ borderLeft: '2px solid #1e293b', marginLeft: 6, padding: '8px 12px', marginBottom: 12, background: 'rgba(241,245,249,0.6)', borderRadius: '0 8px 8px 0' }}>
                 <div className="md-body" style={{ fontSize: 13, lineHeight: 1.7, color: '#64748b', wordBreak: 'break-word' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{thought}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{thought}</ReactMarkdown>
                 </div>
               </div>
             </CollapsibleContent>
@@ -332,7 +334,7 @@ const Bubble = memo(function Bubble({
         )}
 
         <div className="md-body" style={{ fontSize: 16, lineHeight: 1.8, color: '#334155', wordBreak: 'break-word' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.answer || (hasThinking ? '' : msg.content)}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{parsed.answer || (hasThinking ? '' : msg.content)}</ReactMarkdown>
           {msg.streaming && msg.content && <span className="cursor-blink" aria-hidden />}
         </div>
 

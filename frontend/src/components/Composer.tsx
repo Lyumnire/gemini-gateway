@@ -144,7 +144,7 @@ export function Composer({
   const ThinkingToggle = (
     <>
       <span style={{ fontSize: '13px', color: enableThinking ? '#1e293b' : '#94a3b8', fontWeight: 500, flexShrink: 0, userSelect: 'none' }}>
-        思考
+        Extended
       </span>
       <button
         type="button"
