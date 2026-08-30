@@ -7,6 +7,7 @@
 
 由 LaunchAgent (com.geminigateway.cookie-sync) 常驻运行。
 """
+import hashlib
 import json
 import os
 import re
@@ -62,6 +63,23 @@ def write_env(new_text: str) -> None:
 _last_restart = 0.0
 
 
+def backend_cache_path(psid: str) -> Path:
+    """后端读取的会话缓存文件：.cookies/<sha256(1PSID)>.txt，内容为 1PSIDTS。"""
+    h = hashlib.sha256(psid.encode()).hexdigest()
+    return ROOT / "data" / "cookies" / f"{h}.txt"
+
+
+def write_backend_cookie_cache(psid: str, psidts: str) -> bool:
+    """把浏览器最新 PSIDTS 直写进后端缓存；返回是否变化。"""
+    path = backend_cache_path(psid)
+    old = path.read_text().strip() if path.exists() else ""
+    if old == psidts:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(psidts)
+    return True
+
+
 def restart_backend() -> None:
     # 注意：docker restart 不会重新读取 .env（环境变量在容器创建时固化），
     # 必须用 compose force-recreate 才能让新配置生效
@@ -70,16 +88,21 @@ def restart_backend() -> None:
         log("距上次重建不足 15 秒，跳过（下一次推送会再触发）")
         return
     _last_restart = time.time()
-    try:
-        r = subprocess.run(["/usr/local/bin/docker", "compose", "-f", str(ROOT / "docker-compose.yml"),
-                            "up", "-d", "--force-recreate", BACKEND_CONTAINER],
-                           capture_output=True, text=True, timeout=120, cwd=str(ROOT))
-        if r.returncode == 0:
-            log("后端容器已重建（新配置生效）")
-        else:
-            log(f"重建失败(exit {r.returncode}): {(r.stderr or r.stdout)[-400:]}")
-    except Exception as e:  # noqa: BLE001
-        log(f"重启后端异常: {e}")
+    last_err = ""
+    for attempt in range(1, 4):
+        try:
+            r = subprocess.run(["/usr/local/bin/docker", "compose", "-f", str(ROOT / "docker-compose.yml"),
+                                "up", "-d", "--force-recreate", BACKEND_CONTAINER],
+                               capture_output=True, text=True, timeout=120, cwd=str(ROOT))
+            if r.returncode == 0:
+                log("后端容器已重建（新配置生效）")
+                return
+            last_err = f"exit {r.returncode}: {(r.stderr or r.stdout)[-300:]}"
+        except Exception as e:  # noqa: BLE001
+            last_err = str(e)
+        log(f"重建第 {attempt}/3 次失败: {last_err}")
+        time.sleep(5)
+    log(f"重建三次均失败: {last_err}")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -108,24 +131,28 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
     def handle_cookies(self):
+        """新协议：1PSID 写入 .env（长效）；1PSIDTS 直写后端缓存文件（短命，由后端轮换接管）。"""
         data = self._authed_body()
         if data is None:
             return
         cookies = data.get("cookies") or {}
-        psid = str(cookies.get("__Secure-1PSID", "")).strip()
-        psidts = str(cookies.get("__Secure-1PSIDTS", "")).strip()
+        psid = str(cookies.get("__Secure-1PSID", "")).strip().strip('"').strip("'")
+        psidts = str(cookies.get("__Secure-1PSIDTS", "")).strip().strip('"').strip("'")
         if len(psid) < 30 or len(psidts) < 20:
             return self._json(400, {"error": "cookie 格式不符合预期"})
 
         orig = ENV_FILE.read_text()
         new = set_env_value(orig, "GEMINI_1PSID", psid)
-        new = set_env_value(new, "GEMINI_1PSIDTS", psidts)
-        changed = new != orig
-        log(f"收到 Cookie 推送: psid={psid[:10]}… psidts={psidts[:10]}… 变化={changed}")
-        if changed:
-            write_env(new)
+        # PSIDTS 保持为空：由后端自动轮换 + 缓存文件管理，避免过期值覆盖缓存
+        new = set_env_value(new, "GEMINI_1PSIDTS", "")
+        env_changed = new != orig
+
+        cache_changed = write_backend_cookie_cache(psid, psidts)
+        log(f"收到 Cookie 推送: psid={psid[:10]}… env变化={env_changed} 缓存变化={cache_changed}")
+
+        if env_changed or cache_changed:
             restart_backend()
-        self._json(200, {"ok": True, "changed": changed})
+        self._json(200, {"ok": True, "changed": env_changed or cache_changed})
 
     def handle_models_config(self):
         data = self._authed_body()
@@ -206,4 +233,18 @@ def extract_model_aliases(chunks: list) -> dict:
 
 if __name__ == "__main__":
     log(f"cookie-sync 接收服务启动，监听 127.0.0.1:{LISTEN_PORT}")
+
+    import threading
+
+    def session_refresher():
+        import time as _t
+        while True:
+            _t.sleep(12 * 3600)
+            log("定时任务：刷新后端会话（每 12 小时）")
+            try:
+                restart_backend()
+            except Exception as e:  # noqa: BLE001
+                log(f"定时刷新失败: {e}")
+
+    threading.Thread(target=session_refresher, daemon=True).start()
     HTTPServer(("127.0.0.1", LISTEN_PORT), Handler).serve_forever()
