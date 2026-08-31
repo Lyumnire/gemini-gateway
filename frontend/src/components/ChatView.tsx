@@ -74,32 +74,12 @@ const uid = () => `m${++_id}`;
 // 生成图下载（PNG 转码）
 // ------------------------------------------------------------------
 
-function downloadImage(image: string, id: string) {
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvas.getContext('2d')!.drawImage(img, 0, 0);
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `gemini-image-${id}.png`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    }, 'image/png');
-  };
-  img.src = image;
-}
-
 // ------------------------------------------------------------------
 // Bubble — 统一渲染：文本 / 思考 / 生图 / 深度研究
 // ------------------------------------------------------------------
 
 const Bubble = memo(function Bubble({
-  msg, onCopy, onRetry, enableThinking, onDownloadImage, onDownloadReport, downloadedReportId,
+  msg, onCopy, onRetry, enableThinking, onDownloadReport, downloadedReportId,
 }: {
   msg: Msg;
   onCopy?: () => void;
