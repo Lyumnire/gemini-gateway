@@ -610,8 +610,13 @@ export function ChatView({
     };
 
     try {
+      // ---- 生成图片工具：直接走 /images/generations 端点（已验证 208KB 成功）----
+      if (activeTool === 'image') {
+        const result = await api.generateImage('gemini-3.1-pro', text, controller.signal);
+        finish({ image: result.image, streaming: false, content: '' }, { persist: true });
+      }
       // ---- 深度研究工具 ----
-      if (activeTool === 'research') {
+      else if (activeTool === 'research') {
         const state = { progress: 4, status: '正在启动深度研究…', sources: [] as Source[] };
         for await (const ev of api.deepResearchStream(text, controller.signal)) {
           if (ev.event === 'error') throw new Error(ev.error || '研究失败');
