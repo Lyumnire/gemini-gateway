@@ -16,37 +16,37 @@
 		Cache-Control "no-store"
 	}
 
-	# route：按书写顺序，已匹配的 handle 会返回，不会到达后续处理器
 	route {
-		# 1. 图片代理（公开，无认证，直接反代到后端内置代理）
-		handle /proxy-image/* {
+		# 1. 图片代理（公开，免认证）
+		@proxy path /proxy-image/*
+		handle @proxy {
 			reverse_proxy gemini-api:4981
 		}
 
-		# 2. PWA 静态资源（公开，无认证）
+		# 2. PWA 静态资源
 		@static path /manifest.webmanifest /favicon.svg /pwa-192.png /pwa-512.png
 		handle @static {
 			root * /srv/www
 			file_server
 		}
 
-		# 3. 健康检查（公开）
+		# 3. 健康检查
 		handle /health {
 			reverse_proxy gemini-api:4981
 		}
 
-		# 4. 密码认证（拦截以上所有未匹配的请求）
+		# 4. 密码认证
 		basic_auth {
 			{$GATEWAY_USER} $2a$14$oksee647jm2jhKzhU2vTQ.Pm9kQfFKvTq2U0HhvvZvj9c4qmlKupe
 		}
 
-		# 5. 认证后的 API 反代
+		# 5. API 反代
 		@api path /openai/* /claude/* /gemini/* /docs /openapi.json
 		handle @api {
 			reverse_proxy gemini-api:4981
 		}
 
-		# 6. React SPA
+		# 6. SPA
 		handle {
 			root * /srv/www
 			try_files {path} /index.html
