@@ -14,6 +14,8 @@ services:
       - GEMINI_REFRESH_INTERVAL=${GEMINI_REFRESH_INTERVAL:-30}
       - GEMINI_MAX_RETRIES=${GEMINI_MAX_RETRIES:-3}
       - GEMINI_TEMPORARY=${GEMINI_TEMPORARY:-false}
+      # 完整 Google 登录 Cookie（图片代理通过 Clash 下载 Google CDN 图片用）
+      - GEMINI_GOOGLE_COOKIES=${GEMINI_GOOGLE_COOKIES:-}
       - APP_ENV=production
       - PORT=4981
       - RATE_LIMIT_ENABLED=true
