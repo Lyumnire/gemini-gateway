@@ -105,8 +105,7 @@ const Bubble = memo(function Bubble({
   onCopy?: () => void;
   onRetry?: () => void;
   enableThinking?: boolean;
-  onDownloadImage?: (image: string, id: string) => void;
-  onDownloadReport?: (msg: Msg) => void;
+    onDownloadReport?: (msg: Msg) => void;
   downloadedReportId?: string | null;
 }) {
   const isUser = msg.role === 'user';
@@ -813,8 +812,7 @@ export function ChatView({
                 enableThinking={enableThinking}
                 onCopy={m.role === 'assistant' && m.content ? () => handleCopyMessage(m.content) : undefined}
                 onRetry={m.role === 'assistant' && !streaming && m.content && !m.image && !m.research ? () => handleRetryMessage(m.id) : undefined}
-                onDownloadImage={downloadImage}
-                onDownloadReport={downloadReport}
+                                onDownloadReport={downloadReport}
                 downloadedReportId={downloadedReportId}
               />
             ))}
