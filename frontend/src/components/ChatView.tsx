@@ -213,7 +213,15 @@ const Bubble = memo(function Bubble({
             <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px', borderTop: '1px solid rgba(148,163,184,0.12)' }}>
               <button
                 type="button"
-                onClick={() => onDownloadImage?.(msg.image!, msg.id)}
+                onClick={async () => {
+                    try {
+                      const res = await fetch(msg.image!);
+                      const blob = await res.blob();
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = 'gemini-image.png'; a.click();
+                    } catch { window.open(msg.image!, '_blank'); }
+                  }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
                   borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12,
@@ -393,7 +401,15 @@ const Bubble = memo(function Bubble({
                   }}
                 />
                 <figcaption style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px', borderTop: '1px solid rgba(148,163,184,0.12)' }}>
-                  <button type="button" onClick={() => onDownloadImage?.(url, msg.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: '#0f172a', color: '#fff' }}>
+                  <button type="button" onClick={async () => {
+                      try {
+                        const res = await fetch(url);
+                        const blob = await res.blob();
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = 'gemini-image.png'; a.click();
+                      } catch { window.open(url, '_blank'); }
+                    }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: '#0f172a', color: '#fff' }}>
                     <Download size={13} /> 下载原图
                   </button>
                 </figcaption>
