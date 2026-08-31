@@ -320,6 +320,11 @@ const Bubble = memo(function Bubble({
   }
 
   // ---- 普通文本（含思考面板；派生值已在顶部计算）----
+  // 3.1 Pro 聊天生图时返回 _528\n![image](https://lh3.googleusercontent.com/...)
+  const contentRaw = parsed.answer || (hasThinking ? '' : msg.content) || '';
+  const imageUrls = [...contentRaw.matchAll(/https?:\/\/lh[\w.-]*\.googleusercontent\.com\/[^\)\s"\x60]+/g)].map((m) => m[0]);
+  const textForMarkdown = contentRaw.replace(/https?:\/\/lh[\w.-]*\.googleusercontent\.com\/[^\)\s"\x60]+/g, '').replace(/^\s*_\d+\s*\n?/, '').trim();
+
 
 
   return (
@@ -363,9 +368,24 @@ const Bubble = memo(function Bubble({
         )}
 
         <div className="md-body" style={{ fontSize: 16, lineHeight: 1.8, color: '#334155', wordBreak: 'break-word' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{parsed.answer || (hasThinking ? '' : msg.content)}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textForMarkdown}</ReactMarkdown>
           {msg.streaming && msg.content && <span className="cursor-blink" aria-hidden />}
         </div>
+
+        {imageUrls.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {imageUrls.map((url, i) => (
+              <figure key={i} style={{ maxWidth: 480, borderRadius: 16, overflow: 'hidden', background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(148,163,184,0.15)' }}>
+                <img src={url} alt={'gen '+(i+1)} style={{ display: 'block', width: '100%' }} loading="lazy" />
+                <figcaption style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px', borderTop: '1px solid rgba(148,163,184,0.12)' }}>
+                  <button type="button" onClick={() => onDownloadImage?.(url, msg.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: '#0f172a', color: '#fff' }}>
+                    <Download size={13} /> 下载原图
+                  </button>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
 
         {!msg.streaming && msg.content && (
           <div
