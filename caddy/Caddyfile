@@ -33,6 +33,12 @@
 			{$GATEWAY_USER} $2a$14$Bc87Sk1Bd7V8vdlbhkpnxuxjVm.2f3OUuwN4yObrqkBnWIljC1J9O
 		}
 
+		# 图片代理：通过 Clash 转发 Google CDN 图片（国内 CDN 被墙，裸 img 标签无法加载）
+		@proxy path /proxy-image/*
+		handle @proxy {
+			reverse_proxy image-proxy:18888
+		}
+
 		# 后端 API（OpenAI / Claude / Gemini 三种协议 + 健康检查 + 文档）
 		@api path /openai/* /claude/* /gemini/* /health /docs /openapi.json
 		handle @api {
