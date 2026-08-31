@@ -22,10 +22,10 @@ import {
   ChevronDown, Brain, Loader2, Download, Globe,
 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-
 import { api, type ChatMessage } from '@/lib/api_client';
 import { parseThinkingMessage } from '@/lib/think_parser';
 import { Composer, type Tool, type AttachedFile } from './Composer';
+import { fetchImagesAsDataUrls } from '../lib/api_client';
 
 // ------------------------------------------------------------------
 // Types
@@ -663,6 +663,14 @@ export function ChatView({
             thinking += event.text;
             const now = Date.now();
             if (now - lastFlush >= 120) { lastFlush = now; finish({ thinking }); }
+          }
+        }
+        // 预获取：检测文本中的 Google CDN 图片链接，通过 b64 代理转为 data URL
+        const fetchedImages = await fetchImagesAsDataUrls(acc, controller.signal);
+        if (fetchedImages.length > 0) {
+          // 替换图片 URL 为 data URL（前端直接显示，不依赖 CDN）
+          for (const dataUrl of fetchedImages) {
+            acc = acc.replace(/https?:\/\/lh[\w.-]*\.googleusercontent\.com\/[^\)"`\s]+/, dataUrl);
           }
         }
         finish({ content: acc, thinking, streaming: false }, { persist: true });

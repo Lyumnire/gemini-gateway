@@ -116,6 +116,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 // 模型列表
 // ------------------------------------------------------------------
 
+/** 提取文本中的 Google CDN 图片链接并转为 data URL（通过后端 b64 代理） */
+export async function fetchImagesAsDataUrls(text: string, signal?: AbortSignal): Promise<string[]> {
+  const urls = [...text.matchAll(/https?:\/\/lh[\w.-]*\.googleusercontent\.com\/[^\)"`\s]+/g)].map(m => m[0]);
+  if (!urls.length) return [];
+  const results: string[] = [];
+  for (const url of urls) {
+    try {
+      const res = await fetch("/proxy-image/b64?src=" + encodeURIComponent(url), { signal });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.b64) results.push("data:" + d.content_type + ";base64," + d.b64);
+      }
+    } catch { /* skip */ }
+  }
+  return results;
+}
+
 export const api = {
   listModels: async (): Promise<ModelList> => {
     const data = await request<{ data?: Array<{ id: string }> }>('/openai/v1/models');
