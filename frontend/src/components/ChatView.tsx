@@ -378,7 +378,7 @@ const Bubble = memo(function Bubble({
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {imageUrls.map((url, i) => (
               <figure key={i} style={{ maxWidth: 480, borderRadius: 16, overflow: 'hidden', background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(148,163,184,0.15)' }}>
-                <img src={`/proxy-image?src=${encodeURIComponent(url)}`} alt={'gen '+(i+1)} style={{ display: 'block', width: '100%' }} loading="lazy" />
+                <img src={`/proxy-image/g?src=${encodeURIComponent(url)}`} alt={'gen '+(i+1)} style={{ display: 'block', width: '100%' }} loading="lazy" />
                 <figcaption style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px', borderTop: '1px solid rgba(148,163,184,0.12)' }}>
                   <button type="button" onClick={() => onDownloadImage?.(url, msg.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: '#0f172a', color: '#fff' }}>
                     <Download size={13} /> 下载原图
