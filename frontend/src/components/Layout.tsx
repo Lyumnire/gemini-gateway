@@ -94,88 +94,6 @@ function DeleteConfirm({
 }
 
 // ------------------------------------------------------------------
-// 重命名对话框（Enter 保存 / Esc 取消）
-// ------------------------------------------------------------------
-
-function RenameDialog({
-  title, onSave, onCancel,
-}: {
-  title: string;
-  onSave: (newTitle: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(title);
-  const trimmed = value.trim();
-  const canSave = trimmed.length > 0 && trimmed !== title;
-
-  return (
-    <div
-      onClick={onCancel}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel();
-        if (e.key === 'Enter' && canSave) onSave(trimmed);
-      }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 320, padding: '24px',
-          borderRadius: 20,
-          background: 'rgba(255,255,255,0.92)',
-          backdropFilter: 'blur(24px)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-          border: '1px solid rgba(255,255,255,0.6)',
-        }}
-      >
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#1e293b', marginBottom: 14 }}>
-          重命名会话
-        </div>
-        <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          maxLength={100}
-          style={{
-            width: '100%', padding: '10px 12px', marginBottom: 20,
-            borderRadius: 10, border: '1px solid rgba(148,163,184,0.4)',
-            fontSize: 13, color: '#1e293b', outline: 'none',
-            background: 'rgba(255,255,255,0.8)',
-            boxSizing: 'border-box',
-          }}
-        />
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: '8px 18px', borderRadius: 10, border: 'none',
-              fontSize: 13, fontWeight: 500, cursor: 'pointer',
-              background: 'rgba(15,23,42,0.06)', color: '#64748b',
-            }}
-          >
-            取消
-          </button>
-          <button
-            onClick={() => canSave && onSave(trimmed)}
-            style={{
-              padding: '8px 18px', borderRadius: 10, border: 'none',
-              fontSize: 13, fontWeight: 500, cursor: canSave ? 'pointer' : 'default',
-              background: canSave ? '#1e293b' : 'rgba(15,23,42,0.15)', color: '#fff',
-            }}
-          >
-            保存
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------
 // Sidebar
 // ------------------------------------------------------------------
 
@@ -198,9 +116,29 @@ function Sidebar({
 }) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SessionEntry | null>(null);
-  const [renameTarget, setRenameTarget] = useState<SessionEntry | null>(null);
+  // 原地重命名：正在编辑的会话 id 与编辑中的标题值
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  const startRename = (s: SessionEntry) => {
+    setEditingId(s.id);
+    setEditValue(s.title);
+  };
+
+  const commitRename = () => {
+    if (editingId == null) return;
+    const trimmed = editValue.trim();
+    const original = sessions.find((s) => s.id === editingId);
+    if (trimmed && original && trimmed !== original.title) {
+      onSessionRename(editingId, trimmed);
+    }
+    setEditingId(null);
+  };
+
+  const cancelRename = () => setEditingId(null);
 
   const handleSelect = (id: number) => {
+    if (editingId != null) return; // 编辑中不触发选中
     onSessionSelect(id);
     if (isMobile) onClose();
   };
@@ -225,18 +163,6 @@ function Sidebar({
           title={deleteTarget.title}
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {/* 重命名 */}
-      {renameTarget && (
-        <RenameDialog
-          title={renameTarget.title}
-          onSave={(newTitle) => {
-            onSessionRename(renameTarget.id, newTitle);
-            setRenameTarget(null);
-          }}
-          onCancel={() => setRenameTarget(null)}
         />
       )}
 
@@ -356,24 +282,55 @@ function Sidebar({
                     marginBottom: '2px',
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: '13px',
-                      fontWeight: isCurrent ? 500 : 400,
-                      color: isCurrent ? '#1e293b' : '#64748b',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    {s.title || '新对话'}
-                  </span>
+                  {editingId === s.id ? (
+                    <input
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') commitRename();
+                        if (e.key === 'Escape') cancelRename();
+                      }}
+                      onBlur={commitRename}
+                      maxLength={100}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: '#1e293b',
+                        background: 'rgba(255,255,255,0.9)',
+                        border: '1px solid rgba(59,130,246,0.55)',
+                        borderRadius: '6px',
+                        padding: '2px 6px',
+                        outline: 'none',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onDoubleClick={() => startRename(s)}
+                      style={{
+                        fontSize: '13px',
+                        fontWeight: isCurrent ? 500 : 400,
+                        color: isCurrent ? '#1e293b' : '#64748b',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
+                      {s.title || '新对话'}
+                    </span>
+                  )}
+                  {editingId !== s.id && (
+                  <>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setRenameTarget(s);
+                      startRename(s);
                     }}
                     style={{
                       display: 'flex',
@@ -420,6 +377,8 @@ function Sidebar({
                   >
                     <Trash2 size={14} />
                   </button>
+                  </>
+                  )}
                 </div>
               );
             })}
