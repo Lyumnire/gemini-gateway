@@ -7,8 +7,8 @@
  *   GET  /openai/v1/models             模型列表
  *   POST /gemini/v1beta/deepresearch/stream  深度研究（SSE）
  *
- * 会话存储在浏览器 localStorage（按模态分组），不依赖服务端。
- * 访问认证由 Caddy basic_auth 在浏览器层完成，此处无需 Token。
+ * 认证：JWT Bearer Token（30天有效），存储在 localStorage `gg-token`。
+ * 会话：SQLite 服务端为主，localStorage 做离线缓存（双写）。
  */
 
 // ------------------------------------------------------------------
@@ -31,7 +31,7 @@ export interface ModelList {
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | any[];
 }
 
 /** 流式输出事件 */
@@ -44,6 +44,9 @@ export interface ImageResult {
   image: string; // data URL
   width: number;
   height: number;
+  conversation_id?: string;
+  response_id?: string;
+  choice_id?: string;
 }
 
 export interface ResearchSource {
@@ -61,16 +64,46 @@ export type DeepResearchEvent =
   | { event: 'error'; error?: string };
 
 // ------------------------------------------------------------------
-// 会话存储（localStorage 适配层）
+// 用户资料
+// ------------------------------------------------------------------
+
+export interface UserProfile {
+  id: number;
+  username: string;
+  avatar: string;
+  created_at: string;
+}
+
+// ------------------------------------------------------------------
+// Token 管理
+// ------------------------------------------------------------------
+
+const TOKEN_KEY = 'gg-token';
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+// ------------------------------------------------------------------
+// 会话存储（localStorage + 服务端双写）
 // ------------------------------------------------------------------
 
 export interface SessionRecord {
   id: number;
+  server_id?: number;  // 服务端 conversation ID
   title: string;
   modality: string;
   model_name: string | null;
   created_at: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: Array<{ role: string; content: string; image?: string; attachment?: any }>;
 }
 
 const SESSIONS_KEY = 'gg-sessions';
@@ -91,21 +124,43 @@ function saveStore(store: Record<number, SessionRecord>) {
   }
 }
 
+/** 找到 localStorage 中 server_id 匹配的记录 */
+function findLocalByServerId(store: Record<number, SessionRecord>, serverId: number): SessionRecord | undefined {
+  return Object.values(store).find(s => s.server_id === serverId);
+}
+
 // ------------------------------------------------------------------
-// 通用请求
+// 通用请求（自动注入 JWT）
 // ------------------------------------------------------------------
 
+let _onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(fn: () => void) {
+  _onUnauthorized = fn;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 401) {
+    clearToken();
+    _onUnauthorized?.();
+    throw new Error('认证已过期，请重新登录');
+  }
   if (!res.ok) {
     const body = await res.text();
     let detail = body;
     try {
       const json = JSON.parse(body);
-      detail = json.error?.message || json.detail || JSON.stringify(json);
+      detail = json.error?.message || json.detail || json.error || JSON.stringify(json);
     } catch {}
     throw new Error(`API ${res.status}: ${detail}`);
   }
@@ -123,7 +178,10 @@ export async function fetchImagesAsDataUrls(text: string, signal?: AbortSignal):
   const results: string[] = [];
   for (const url of urls) {
     try {
-      const res = await fetch("/proxy-image/b64?src=" + encodeURIComponent(url), { signal });
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch("/proxy-image/b64?src=" + encodeURIComponent(url), { signal, headers });
       if (res.ok) {
         const d = await res.json();
         if (d.b64) results.push("data:" + d.content_type + ";base64," + d.b64);
@@ -160,9 +218,15 @@ export const api = {
     signal?: AbortSignal,
     _enableThinking = false,
     _sessionId?: number | null,
+    conversationMeta?: { conversation_id?: string; response_id?: string; choice_id?: string },
   ): AsyncGenerator<StreamEvent> {
-    // 图片附件：转为 OpenAI 视觉格式（data URL 内联）
+    // 构建请求消息：处理附件和 multipart 内容
     const outbound = messages.map((m, i) => {
+      // 如果 content 已经是数组（multipart），直接使用
+      if (Array.isArray(m.content)) {
+        return { role: m.role, content: m.content };
+      }
+      // 最后一条用户消息 + 图片附件：转为 vision 格式
       if (i === messages.length - 1 && m.role === 'user' && imageDataUrl) {
         return {
           role: m.role,
@@ -175,13 +239,40 @@ export const api = {
       return { role: m.role, content: m.content };
     });
 
-    const res = await fetch('/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages: outbound, stream: true }),
-      signal,
-    });
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
+    const body: any = { model, messages: outbound, stream: true };
+    // 传递对话元数据（用于多轮对话上下文）
+    const hasMeta = !!(conversationMeta?.conversation_id && conversationMeta?.choice_id);
+    if (conversationMeta) {
+      if (conversationMeta.conversation_id) body.conversation_id = conversationMeta.conversation_id;
+      if (conversationMeta.response_id) body.response_id = conversationMeta.response_id;
+      if (conversationMeta.choice_id) body.choice_id = conversationMeta.choice_id;
+    }
+    console.log(`[gg] chat request | hasMeta=${hasMeta} | CID=${conversationMeta?.conversation_id || '(none)'} | RID=${conversationMeta?.response_id || '(none)'} | RCID=${conversationMeta?.choice_id || '(none)'} | msgCount=${outbound.length}`);
+    const bodyStr = JSON.stringify(body);
+
+    let res: Response;
+    try {
+      res = await fetch('/openai/v1/chat/completions', {
+        method: 'POST',
+        headers,
+        body: bodyStr,
+        signal,
+      });
+    } catch (e: any) {
+      console.error('[gg] fetch failed:', e.message, e.name);
+      if (e.name === 'AbortError') throw e;
+      throw new Error(`网络请求失败: ${e.message}（请求大小: ${(bodyStr.length / 1024).toFixed(0)}KB）`);
+    }
+
+    if (res.status === 401) {
+      clearToken();
+      _onUnauthorized?.();
+      throw new Error('认证已过期，请重新登录');
+    }
     if (!res.ok) {
       const body = await res.text();
       let detail = body;
@@ -207,6 +298,13 @@ export const api = {
         if (trimmed === 'data: [DONE]') return;
         try {
           const parsed = JSON.parse(trimmed.slice(6));
+          
+          // 提取对话元数据（后端发送的第一个 chunk）
+          if (parsed.conversation_id) {
+            console.log(`[gg] stream metadata | CID=${parsed.conversation_id} | RID=${parsed.response_id} | RCID=${parsed.choice_id}`);
+            yield { type: 'metadata', conversationId: parsed.conversation_id, responseId: parsed.response_id, choiceId: parsed.choice_id } as any;
+          }
+          
           const delta = parsed.choices?.[0]?.delta;
           if (!delta) continue;
           if (delta.reasoning_content) yield { type: 'thinking', text: delta.reasoning_content };
@@ -228,18 +326,67 @@ export const api = {
     model: string,
     prompt: string,
     signal?: AbortSignal,
+    conversationMeta?: { conversation_id?: string; response_id?: string; choice_id?: string },
   ): Promise<ImageResult> => {
-    const data = await request<{ data?: Array<{ b64_json?: string }> }>(
-      '/openai/v1/images/generations',
-      {
-        method: 'POST',
-        body: JSON.stringify({ model, prompt, n: 1, response_format: 'b64_json' }),
-        signal,
-      },
-    );
-    const b64 = data.data?.[0]?.b64_json;
-    if (!b64) throw new Error('未返回图片数据');
-    return { image: `data:image/png;base64,${b64}`, width: 0, height: 0 };
+    const body: any = { model, prompt, n: 1, response_format: 'b64_json' };
+    if (conversationMeta?.conversation_id) body.conversation_id = conversationMeta.conversation_id;
+    if (conversationMeta?.response_id) body.response_id = conversationMeta.response_id;
+    if (conversationMeta?.choice_id) body.choice_id = conversationMeta.choice_id;
+
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/openai/v1/images/generations', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (res.status === 401) {
+      clearToken();
+      _onUnauthorized?.();
+      throw new Error('认证已过期，请重新登录');
+    }
+    if (!res.ok) throw new Error(`Image ${res.status}: ${await res.text()}`);
+
+    // 解析 SSE 流（心跳注释 + data 事件）
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: { data?: Array<{ b64_json?: string }>; conversation_id?: string; response_id?: string; choice_id?: string; error?: string } | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = done ? '' : lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ') || trimmed === 'data: [DONE]') continue;
+        try {
+          const parsed = JSON.parse(trimmed.slice(6));
+          if (parsed.error) throw new Error(parsed.error);
+          result = parsed;
+        } catch (e: any) {
+          if (e.message && !e.message.includes('JSON')) throw e;
+        }
+      }
+      if (done) break;
+    }
+
+    if (!result) throw new Error('未收到图片数据');
+    const b64 = result.data?.[0]?.b64_json;
+    if (!b64) throw new Error(result.error || '未返回图片数据');
+    return {
+      image: `data:image/png;base64,${b64}`,
+      width: 0,
+      height: 0,
+      conversation_id: result.conversation_id,
+      response_id: result.response_id,
+      choice_id: result.choice_id,
+    };
   },
 
   // ----------------------------------------------------------------
@@ -250,12 +397,21 @@ export const api = {
     query: string,
     signal?: AbortSignal,
   ): AsyncGenerator<DeepResearchEvent> {
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const res = await fetch('/gemini/v1beta/deepresearch/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ query, language: 'zh' }),
       signal,
     });
+    if (res.status === 401) {
+      clearToken();
+      _onUnauthorized?.();
+      throw new Error('认证已过期，请重新登录');
+    }
     if (!res.ok) throw new Error(`DeepResearch ${res.status}: ${await res.text()}`);
 
     const reader = res.body!.getReader();
@@ -295,7 +451,27 @@ export const api = {
   },
 
   // ----------------------------------------------------------------
-  // 会话管理（localStorage 适配层）
+  // 用户资料
+  // ----------------------------------------------------------------
+
+  getProfile: async (): Promise<UserProfile> => {
+    return request<UserProfile>('/auth/me');
+  },
+
+  updateProfile: async (data: {
+    username?: string;
+    password?: string;
+    old_password?: string;
+    avatar?: string;
+  }): Promise<UserProfile> => {
+    return request<UserProfile>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ----------------------------------------------------------------
+  // 会话管理（localStorage + 服务端双写）
   // ----------------------------------------------------------------
 
   getSessions: (modality?: string): SessionRecord[] => {
@@ -318,6 +494,17 @@ export const api = {
     };
     store[id] = rec;
     saveStore(store);
+
+    // 异步同步到服务端（不阻塞 UI）
+    request<{ id: number }>('/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ title, model: modelName }),
+    }).then((data) => {
+      rec.server_id = data.id;
+      const s = loadStore();
+      if (s[id]) { s[id].server_id = data.id; saveStore(s); }
+    }).catch(() => {});
+
     return rec;
   },
 
@@ -330,24 +517,78 @@ export const api = {
         id: i,
         role: m.role,
         content: m.content,
+        image: m.image,
+        attachment: m.attachment,
         metadata: null,
         created_at: rec?.created_at ?? '',
       })),
     };
   },
 
-  saveSessionMessages: (sessionId: number, messages: Array<{ role: string; content: string }>) => {
+  saveSessionMessages: (sessionId: number, messages: Array<{ role: string; content: string; image?: string; attachment?: any }>) => {
     const store = loadStore();
     const rec = store[sessionId];
     if (!rec) return;
     rec.messages = messages;
     saveStore(store);
+
+    // 异步同步到服务端
+    if (rec.server_id) {
+      request(`/conversations/${rec.server_id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      }).catch(() => {});
+    }
   },
 
   deleteSession: (sessionId: number) => {
     const store = loadStore();
+    const rec = store[sessionId];
     delete store[sessionId];
     saveStore(store);
+
+    // 异步删除服务端记录
+    if (rec?.server_id) {
+      request(`/conversations/${rec.server_id}`, { method: 'DELETE' }).catch(() => {});
+    }
     return { message: 'ok' };
+  },
+
+  // ----------------------------------------------------------------
+  // 登录后从服务端拉取会话列表（合并到 localStorage）
+  // ----------------------------------------------------------------
+
+  syncFromServer: async (): Promise<void> => {
+    try {
+      const serverConvs = await request<Array<{ id: number; title: string; model: string; created_at: string; updated_at: string }>>('/conversations');
+      const store = loadStore();
+
+      for (const conv of serverConvs) {
+        const existing = findLocalByServerId(store, conv.id);
+        if (existing) {
+          // 更新标题等元数据
+          existing.title = conv.title;
+          existing.model_name = conv.model;
+        } else {
+          // 从服务端拉取新会话
+          try {
+            const detail = await request<{ conversation: any; messages: Array<{ role: string; content: string }> }>(`/conversations/${conv.id}`);
+            const localId = Date.now() + Math.random();
+            store[localId] = {
+              id: localId,
+              server_id: conv.id,
+              title: conv.title,
+              modality: 'chat',
+              model_name: conv.model,
+              created_at: conv.created_at,
+              messages: detail.messages.map(m => ({ role: m.role, content: m.content })),
+            };
+          } catch { /* skip */ }
+        }
+      }
+      saveStore(store);
+    } catch { /* 离线时静默失败 */ }
   },
 };

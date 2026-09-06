@@ -27,6 +27,10 @@ cp -R "$EXT_SRC" "$EXT_DST"
 sed -i '' "s|__TOKEN__|${TOKEN}|" "$EXT_DST/background.js"
 echo "✓ 扩展已生成: $PWD/$EXT_DST"
 
+# 2b) 生成手动推送页本地副本（源模板含 __TOKEN__ 占位符，入库的永远是模板）
+sed "s|__TOKEN__|${TOKEN}|g" cookie-sync/cookie-sync.html > cookie-sync/cookie-sync-local.html
+echo "✓ 手动推送页已生成: $PWD/cookie-sync/cookie-sync-local.html"
+
 # 3) LaunchAgent
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 cat > "$PLIST_DST" <<EOF

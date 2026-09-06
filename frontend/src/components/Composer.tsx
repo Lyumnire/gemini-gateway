@@ -20,21 +20,23 @@ export type Tool = 'image' | 'research';
 export interface AttachedFile {
   file: File;
   type: 'image' | 'text';
-  /** 图片的 data URL（视觉输入） */
+  /** 文件的 data URL（base64 编码） */
   dataUrl?: string;
-  /** 文本文件的内容（内联进消息） */
+  /** MIME 类型 */
+  mimeType?: string;
+  /** 文本文件的内容（仅纯文本） */
   text?: string;
   previewUrl?: string;
 }
 
 interface Props {
   tool: Tool | null;
-  attached: AttachedFile | null;
+  attached: AttachedFile[];
   streaming: boolean;
   input: string;
   onToolChange: (t: Tool | null) => void;
   onAttach: (f: AttachedFile) => void;
-  onDetach: () => void;
+  onDetach: (index?: number) => void;
   onInput: (e: ChangeEvent<HTMLTextAreaElement>) => void;
   onKeyDown: (e: KeyboardEvent) => void;
   onSend: () => void;
@@ -59,23 +61,11 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [isMultiline, setIsMultiline] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!input && textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      setIsMultiline(false);
-    }
-  }, [input]);
-
-  // 检测是否多行：输入包含换行符 或 textarea 高度超过单行
-  const checkMultiline = useCallback(() => {
-    const el = textareaRef.current;
-    if (el) {
-      const hasNewline = input.includes('\n');
-      const isTooTall = el.scrollHeight > 40;
-      setIsMultiline(hasNewline || isTooTall);
+      textareaRef.current.style.height = '28px';
     }
   }, [input]);
 
@@ -97,23 +87,33 @@ export function Composer({
 
   const processFile = useCallback((file: File) => {
     if (tool) return; // 工具激活时不接受附件
+    if (attached.length >= 10) return; // 最多10份
+
     if (file.type.startsWith('image/')) {
+      // 图片：读取为 data URL
       const reader = new FileReader();
       reader.onload = () =>
-        onAttach({ file, type: 'image', dataUrl: reader.result as string, previewUrl: reader.result as string });
+        onAttach({ file, type: 'image', dataUrl: reader.result as string, mimeType: file.type, previewUrl: reader.result as string });
       reader.readAsDataURL(file);
-    } else if (/\.(txt|md)$/i.test(file.name)) {
+    } else if (file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name)) {
+      // 纯文本：读取为文本内容
       const reader = new FileReader();
       reader.onload = () =>
-        onAttach({ file, type: 'text', text: String(reader.result || '') });
+        onAttach({ file, type: 'text', text: String(reader.result || ''), mimeType: 'text/plain' });
       reader.readAsText(file);
+    } else {
+      // 其他文件（PDF、doc 等）：读取为 data URL
+      const reader = new FileReader();
+      reader.onload = () =>
+        onAttach({ file, type: 'text', dataUrl: reader.result as string, mimeType: file.type || 'application/octet-stream' });
+      reader.readAsDataURL(file);
     }
-  }, [onAttach, tool]);
+  }, [onAttach, tool, attached.length]);
 
   const handleFileInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
-    if (file) processFile(file);
+    files.forEach((file) => processFile(file));
   }, [processFile]);
 
   const handleDragOver = useCallback((e: DragEvent) => {
@@ -133,11 +133,11 @@ export function Composer({
     e.stopPropagation();
     setDragOver(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    files.forEach((file) => processFile(file));
   }, [processFile]);
 
-  const canSend = (input.trim() || (!tool && attached)) && !streaming;
+  const canSend = (input.trim() || (!tool && attached.length > 0)) && !streaming;
 
 
   // 思考开关（omnihermit 原样）
@@ -230,7 +230,7 @@ export function Composer({
           }}
         >
           <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 500 }}>
-            松开以附加图片
+            松开以附加文件
           </span>
         </div>
       )}
@@ -275,7 +275,7 @@ export function Composer({
               <FileText size={16} style={{ color: tool ? '#cbd5e1' : '#94a3b8', flexShrink: 0 }} />
               上传文件
               <span style={{ marginLeft: 'auto', fontSize: 10, color: tool ? '#cbd5e1' : '#94a3b8' }}>
-                图片 / TXT / MD
+                最多10份
               </span>
             </button>
             <div style={{ height: 1, margin: '4px 8px', background: 'linear-gradient(to right, transparent, rgba(148,163,184,0.25), transparent)' }} />
@@ -307,47 +307,41 @@ export function Composer({
         </>
       )}
 
-      {/* 附件预览（omnihermit 原版 FilePreview 行为） */}
-      {attached && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '8px 12px',
-            marginBottom: 8,
-            background: 'rgba(255,255,255,0.6)',
-            backdropFilter: 'blur(12px)',
-            borderRadius: 14,
-            border: '1px solid rgba(148,163,184,0.12)',
-          }}
-        >
-          {attached.type === 'image' && (attached.previewUrl || attached.dataUrl) ? (
-            <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9' }}>
-              <img src={attached.previewUrl || attached.dataUrl} alt={attached.file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      {/* 附件预览 */}
+      {attached.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+          {attached.map((f, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 10px',
+                background: 'rgba(255,255,255,0.6)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: 12,
+                border: '1px solid rgba(148,163,184,0.12)',
+                maxWidth: 200,
+              }}
+            >
+              {f.type === 'image' && (f.previewUrl || f.dataUrl) ? (
+                <div style={{ width: 28, height: 28, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9' }}>
+                  <img src={f.previewUrl || f.dataUrl} alt={f.file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ) : (
+                <FileText size={16} style={{ color: '#64748b', flexShrink: 0 }} />
+              )}
+              <span style={{ fontSize: 12, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.file.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => onDetach(i)}
+                style={{ width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <X size={12} style={{ color: '#94a3b8' }} />
+              </button>
             </div>
-          ) : (
-            <div style={{ width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', flexShrink: 0 }}>
-              <FileText size={18} style={{ color: '#64748b' }} />
-            </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {attached.file.name}
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
-              {(attached.file.size / 1024).toFixed(1)} KB
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onDetach}
-            style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(148,163,184,0.1)', border: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(148,163,184,0.2)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(148,163,184,0.1)'; }}
-          >
-            <X size={14} style={{ color: '#64748b' }} />
-          </button>
+          ))}
         </div>
       )}
 
@@ -355,12 +349,13 @@ export function Composer({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.txt,.md"
+        accept="image/*,.txt,.md,.pdf,.doc,.docx,.json,.csv,.py,.js,.ts,.go,.java,.c,.cpp,.h,.hpp,.rs,.rb,.php,.swift,.kt,.scala,.sh,.bash,.yaml,.yml,.toml,.ini,.cfg,.conf,.log,.xml,.html,.css,.sql,.r,.m,.mm"
+        multiple
         style={{ display: 'none' }}
         onChange={handleFileInputChange}
       />
 
-      {/* 输入框主体 — omnihermit 原版尺寸 */}
+      {/* 输入框主体 — 固定布局，不随多行切换 */}
       <div
         style={{
           width: '100%',
@@ -371,70 +366,68 @@ export function Composer({
           borderRadius: compact ? '28px' : '32px',
           padding: compact ? '6px 12px 6px 16px' : '10px 12px 10px 16px',
           display: 'flex',
-          flexDirection: isMultiline ? 'column' : 'row',
-          alignItems: isMultiline ? 'stretch' : 'center',
-          gap: isMultiline ? '4px' : '8px',
-          transition: 'all 0.3s ease',
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          gap: '8px',
           boxShadow: focused
             ? '0 0 0 1px rgba(148,163,184,0.15), 0 8px 40px rgba(0,0,0,0.08), 0 20px 60px rgba(0,0,0,0.05)'
             : '0 2px 20px rgba(0,0,0,0.04), 0 8px 40px rgba(0,0,0,0.03)',
         }}
       >
-        {/* 单行：工具胶囊（激活时）或 + 按钮 — 弹簧淡入缩放，形状不变 */}
-        {!isMultiline && (
-          <AnimatePresence mode="popLayout" initial={false}>
-            {tool ? (
-              <motion.button
-                key="tool-chip"
-                type="button"
-                onClick={() => onToolChange(null)}
-                title="取消工具"
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.7 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  height: 32, padding: '0 12px', border: 'none', cursor: 'pointer',
-                  background: '#0f172a', color: '#ffffff',
-                  fontSize: 13, fontWeight: 500, flexShrink: 0,
-                  borderRadius: '16px',
-                }}
-              >
-                {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
-                {tool === 'image' ? 'Images' : 'Deep Research'}
-                <X size={13} style={{ opacity: 0.7 }} />
-              </motion.button>
-            ) : (
-              <motion.button
-                key="plus"
-                type="button"
-                onClick={handlePlusClick}
-                tabIndex={-1}
-                title="工具菜单"
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.7 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                style={{
-                  flexShrink: 0, width: 32, height: 32, borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: 'none', cursor: 'pointer',
-                  background: menuOpen ? '#0f172a' : 'transparent',
-                  color: menuOpen ? '#ffffff' : '#94a3b8',
-                }}
-              >
-                <Plus size={18} strokeWidth={2} style={{ transform: menuOpen ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s ease' }} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        )}
+        {/* 左侧：+ 按钮 / 工具胶囊 */}
+        <AnimatePresence mode="popLayout" initial={false}>
+          {tool ? (
+            <motion.button
+              key="tool-chip"
+              type="button"
+              onClick={() => onToolChange(null)}
+              title="取消工具"
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.7 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 32, padding: '0 12px', border: 'none', cursor: 'pointer',
+                background: '#0f172a', color: '#ffffff',
+                fontSize: 13, fontWeight: 500, flexShrink: 0,
+                borderRadius: '16px',
+              }}
+            >
+              {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
+              {tool === 'image' ? 'Images' : 'Deep Research'}
+              <X size={13} style={{ opacity: 0.7 }} />
+            </motion.button>
+          ) : (
+            <motion.button
+              key="plus"
+              type="button"
+              onClick={handlePlusClick}
+              tabIndex={-1}
+              title="工具菜单"
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.7 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+              style={{
+                flexShrink: 0, width: 32, height: 32, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', cursor: 'pointer',
+                background: menuOpen ? '#0f172a' : 'transparent',
+                color: menuOpen ? '#ffffff' : '#94a3b8',
+                marginBottom: compact ? 0 : 2,
+              }}
+            >
+              <Plus size={18} strokeWidth={2} style={{ transform: menuOpen ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
-        {/* 文本输入区 */}
+        {/* 中间：文本输入区（自动增长） */}
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => { onInput(e); checkMultiline(); }}
+          onChange={onInput}
           onKeyDown={onKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -442,71 +435,18 @@ export function Composer({
           rows={1}
           className={cn(
             'w-full bg-transparent text-[15px] text-slate-800 placeholder-slate-400/50',
-            'resize-none focus:outline-none leading-[1.6] min-h-[28px]',
+            'resize-none focus:outline-none leading-[1.6]',
             compact ? 'py-0.5' : 'py-1',
           )}
-          style={{ maxHeight: 160, flex: isMultiline ? undefined : 1 }}
+          style={{ maxHeight: 160, minHeight: 28, flex: 1 }}
           disabled={streaming}
         />
 
-        {/* 多行时：底部按钮栏 */}
-        {isMultiline && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
-            <AnimatePresence mode="popLayout" initial={false}>
-              {tool ? (
-                <motion.button
-                  key="tool-chip-m"
-                  type="button"
-                  onClick={() => onToolChange(null)}
-                  initial={{ opacity: 0, scale: 0.7 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.7 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6, height: 32,
-                    padding: '0 12px', border: 'none', cursor: 'pointer',
-                    background: '#0f172a', color: '#ffffff', fontSize: 13,
-                    fontWeight: 500, flexShrink: 0, borderRadius: '16px',
-                  }}
-                >
-                  {tool === 'image' ? <ImageIcon size={14} /> : <Telescope size={14} />}
-                  {tool === 'image' ? 'Images' : 'Deep Research'}
-                  <X size={13} style={{ opacity: 0.7 }} />
-                </motion.button>
-              ) : (
-                <motion.button
-                  key="plus-m"
-                  type="button"
-                  onClick={handlePlusClick}
-                  tabIndex={-1}
-                  initial={{ opacity: 0, scale: 0.7 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.7 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                  style={{
-                    flexShrink: 0, width: 32, height: 32, borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: 'none', cursor: 'pointer', background: 'transparent', color: '#94a3b8',
-                  }}
-                >
-                  <Plus size={18} strokeWidth={2} />
-                </motion.button>
-              )}
-            </AnimatePresence>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {(thinkingType === 'controllable' || thinkingType === 'forced') && ThinkingToggle}
-              {SendButton}
-            </div>
-          </div>
-        )}
-
-        {/* 单行时：思考开关 + 发送按钮在右侧 */}
-        {!isMultiline && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            {(thinkingType === 'controllable' || thinkingType === 'forced') && ThinkingToggle}
-            {SendButton}
-          </div>
-        )}
+        {/* 右侧：思考开关 + 发送按钮 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginBottom: compact ? 0 : 2 }}>
+          {(thinkingType === 'controllable' || thinkingType === 'forced') && ThinkingToggle}
+          {SendButton}
+        </div>
       </div>
     </div>
   );

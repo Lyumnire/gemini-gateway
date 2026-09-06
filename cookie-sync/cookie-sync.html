@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Cookie Sync Bookmarklet</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+    .step { margin: 16px 0; padding: 16px; background: #f8f9fa; border-radius: 12px; }
+    .step h3 { margin: 0 0 8px; font-size: 15px; }
+    .step p { margin: 0; font-size: 13px; color: #666; }
+    .bookmarklet { display: inline-block; padding: 12px 24px; background: #0f172a; color: #fff; text-decoration: none; border-radius: 10px; font-size: 14px; font-weight: 500; }
+    .bookmarklet:hover { background: #1e293b; }
+    code { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>🔄 Cookie Sync Bookmarklet</h1>
+  <p>比扩展更可靠的 cookie 同步方式。不依赖 Service Worker。</p>
+
+  <div class="step">
+    <h3>步骤 1：添加书签</h3>
+    <p>把下面的按钮拖到浏览器书签栏：</p>
+    <p style="margin-top: 12px;">
+      <a class="bookmarklet" href="javascript:void(fetch('http://127.0.0.1:8799/cookies',{method:'POST',headers:{'Content-Type':'application/json','X-Token':'__TOKEN__'},body:JSON.stringify({cookies:{'__Secure-1PSID':document.cookie.match(/__Secure-1PSID=([^;]+)/)?.[1]||'','__Secure-1PSIDTS':document.cookie.match(/__Secure-1PSIDTS=([^;]+)/)?.[1]||''},reason:'bookmarklet'})}).then(r=>r.json()).then(d=>alert(d.ok?'✅ Cookie 已推送':'❌ 推送失败: '+JSON.stringify(d))).catch(e=>alert('❌ 错误: '+e.message)))">
+        🔄 Sync Cookie
+      </a>
+    </p>
+    <p style="margin-top: 8px; font-size: 12px; color: #999;">或者右键 → 添加到书签</p>
+  </div>
+
+  <div class="step">
+    <h3>步骤 2：使用</h3>
+    <p>在 <code>gemini.google.com</code> 页面点击书签栏的 <strong>🔄 Sync Cookie</strong> 即可推送 cookie。</p>
+    <p style="margin-top: 8px;">建议每次使用网关前点击一次，或在网关报错时点击。</p>
+  </div>
+
+  <div class="step">
+    <h3>原理</h3>
+    <p>书签脚本直接从当前页面读取 cookie（HttpOnly 的 cookie 无法读取，需要用扩展或手动方式）。</p>
+    <p style="margin-top: 8px; color: #dc2626;">⚠️ 注意：由于 <code>__Secure-1PSID</code> 和 <code>__Secure-1PSIDTS</code> 是 HttpOnly cookie，JavaScript 无法直接读取。此方案需要配合扩展使用，或手动在 Console 中运行以下命令获取 cookie：</p>
+    <pre style="background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto; margin-top: 8px;">
+// 在 gemini.google.com 的 Console 中运行：
+chrome.cookies.get({url:'https://gemini.google.com', name:'__Secure-1PSID'}, psid => {
+  chrome.cookies.get({url:'https://gemini.google.com', name:'__Secure-1PSIDTS'}, psidts => {
+    fetch('http://127.0.0.1:8799/cookies', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-Token':'__TOKEN__'},
+      body: JSON.stringify({cookies:{'__Secure-1PSID':psid.value,'__Secure-1PSIDTS':psidts.value}, reason:'manual'})
+    }).then(r=>r.json()).then(d=>console.log('Result:', d))
+  })
+})</pre>
+  </div>
+</body>
+</html>

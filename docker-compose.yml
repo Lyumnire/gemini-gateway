@@ -23,13 +23,20 @@ services:
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-30}
       # 官网模型别名 → 动态令牌（由 docs/capture-model-id.md 抓包获得）
       - GEMINI_MODEL_ALIASES=${GEMINI_MODEL_ALIASES:-}
-      # 强制所有 Google 请求经过宿主机 Clash Verge（7897），严禁直连
-      - HTTPS_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
-      - HTTP_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
+      # 用户系统：JWT + SQLite
+      - GATEWAY_JWT_SECRET=${GATEWAY_JWT_SECRET:-}
+      - GATEWAY_INVITE_CODE=${GATEWAY_INVITE_CODE:-}
+      - GATEWAY_DB_PATH=/data/gateway.db
+      # 强制所有上游 Google 请求经过宿主机代理，严禁直连
+      # 默认值适配 Docker Desktop / Linux（host.docker.internal）；OrbStack 用户请在 .env 设置 host.orb.internal
+      - HTTPS_PROXY=${GATEWAY_PROXY_URL:-http://host.docker.internal:7890}
+      - HTTP_PROXY=${GATEWAY_PROXY_URL:-http://host.docker.internal:7890}
       - NO_PROXY=localhost,127.0.0.1
     volumes:
       # 持久化 cookie 缓存：重启后登录态不丢
       - ./data/cookies:/home/appuser/.cookies
+      # SQLite 数据库持久化
+      - ./data/db:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -50,9 +57,8 @@ services:
     ports:
       - "8080:80"
     environment:
-      - GATEWAY_USER=${GATEWAY_USER:-admin}
-      # OrbStack 会随系统代理向容器注入 HTTP(S)_PROXY，会把反代到内部容器名的
-      # 请求也发给 Clash 导致挂起；这里豁免内部通信
+      # 容器被注入系统代理时，反代到内部容器名的请求会被误发给 Clash 导致挂起；
+      # 这里豁免内部通信
       - NO_PROXY=localhost,127.0.0.1,gemini-api,192.168.97.0/24
       - no_proxy=localhost,127.0.0.1,gemini-api,192.168.97.0/24
     volumes:
@@ -63,21 +69,10 @@ services:
     depends_on: [gemini-api]
     networks: [gg]
 
-  # Cloudflare Tunnel：默认免费临时域名（xxxx.trycloudflare.com，重启会变）
-  # 镜像为自制改造版（scripts/build-cloudflared-proxy.sh）：容器内 iptables 把
-  # CF 边缘(7844/TCP)流量透明转发给 gost → 宿主机 Clash，绕开对 argotunnel
-  # 端点的 TLS 干扰。需要 NET_ADMIN 权限操作 iptables。
-  # 升级固定域名：在 .env 填 TUNNEL_TOKEN 后用 override 启动，见 docs/deploy-guide.md
-  cloudflared:
-    image: gg-cloudflared-proxy:local
-    container_name: gg-cloudflared
-    restart: unless-stopped
-    cap_add: [NET_ADMIN]
-    environment:
-      # 让隧道注册/API 调用也走 Clash（与边缘连接同源，避免注册与连接不一致）
-      - HTTPS_PROXY=${GATEWAY_PROXY_URL:-http://host.orb.internal:7897}
-    depends_on: [caddy]
-    networks: [gg]
+  # Cloudflare Tunnel: 在 Mac mini 主机上通过 launchd 直接运行 cloudflared
+  # 不走代理、不进 Docker，直连 Cloudflare edge（避免代理 IP 被拦截）
+  # 管理：launchctl stop/start com.cloudflare.cloudflared
+  # 日志：tail -f /tmp/cloudflared.log
 
 networks:
   gg:

@@ -9,5 +9,5 @@ services:
     command:
       - |
         iptables -t nat -A OUTPUT -p tcp --dport 7844 -j REDIRECT --to-ports 12345
-        gost -L "red://:12345" -F "socks5://host.orb.internal:7897" >/var/log/gost.log 2>&1 &
+        gost -L "red://:12345" -F "socks5://${GATEWAY_PROXY_HOST:-host.docker.internal}:${GATEWAY_PROXY_PORT:-7890}" >/var/log/gost.log 2>&1 &
         exec cloudflared tunnel --no-autoupdate run --token "${TUNNEL_TOKEN:?请在 .env 中填写 TUNNEL_TOKEN}"

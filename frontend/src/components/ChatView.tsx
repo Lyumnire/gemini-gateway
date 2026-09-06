@@ -58,7 +58,7 @@ interface Msg {
   attachment?: {
     type: 'image' | 'text';
     filename: string;
-    previewUrl?: string;
+    previewUrls?: string[];
     dataUrl?: string;
     text?: string;
   };
@@ -128,12 +128,17 @@ const Bubble = memo(function Bubble({
     return (
       <div className="w-full flex justify-end msg-enter">
         <div style={{ maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-          {msg.attachment?.type === 'image' && msg.attachment.previewUrl && (
-            <img
-              src={msg.attachment.previewUrl}
-              alt={msg.attachment.filename}
-              style={{ maxWidth: 280, borderRadius: 16, border: '1px solid rgba(148,163,184,0.15)' }}
-            />
+          {msg.attachment?.type === 'image' && msg.attachment.previewUrls && msg.attachment.previewUrls.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+              {msg.attachment.previewUrls.map((url, i) => (
+                <img
+                  key={i}
+                  src={url}
+                  alt={`${msg.attachment?.filename} (${i + 1})`}
+                  style={{ maxWidth: 200, maxHeight: 200, objectFit: 'cover', borderRadius: 16, border: '1px solid rgba(148,163,184,0.15)' }}
+                />
+              ))}
+            </div>
           )}
           {msg.attachment?.type === 'text' && (
             <div
@@ -180,7 +185,7 @@ const Bubble = memo(function Bubble({
   if (msg.image) {
     return (
       <div style={{ width: '100%', display: 'flex', minWidth: 0 }} className="msg-enter">
-        <div style={{ flex: 1, minWidth: 0, maxWidth: 480 }}>
+        <div style={{ flex: 1, minWidth: 0, maxWidth: 480, position: 'relative' }}>
           <div
             style={{
               borderRadius: 16, overflow: 'hidden',
@@ -189,28 +194,31 @@ const Bubble = memo(function Bubble({
             }}
           >
             <img src={msg.image} alt="生成结果" style={{ display: 'block', width: '100%' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px', borderTop: '1px solid rgba(148,163,184,0.12)' }}>
-              <button
-                type="button"
-                onClick={async () => {
-                    try {
-                      const res = await fetch(msg.image!);
-                      const blob = await res.blob();
-                      const a = document.createElement('a');
-                      a.href = URL.createObjectURL(blob);
-                      a.download = 'gemini-image.png'; a.click();
-                    } catch { window.open(msg.image!, '_blank'); }
-                  }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-                  borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 12,
-                  fontWeight: 500, background: '#0f172a', color: '#fff',
-                }}
-              >
-                <Download size={13} /> 下载原图
-              </button>
-            </div>
           </div>
+          <button
+            type="button"
+            onClick={async () => {
+                try {
+                  const res = await fetch(msg.image!);
+                  const blob = await res.blob();
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = 'gemini-image.png'; a.click();
+                } catch { window.open(msg.image!, '_blank'); }
+              }}
+            style={{
+              position: 'absolute', right: 8, bottom: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32,
+              borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: 'rgba(0,0,0,0.5)', color: '#fff', backdropFilter: 'blur(8px)',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.7)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.5)'; }}
+          >
+            <Download size={15} />
+          </button>
         </div>
       </div>
     );
@@ -502,7 +510,7 @@ export function ChatView({
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [enableThinking, setEnableThinking] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { downloadedReportId, download: downloadReport } = useReportDownload();
@@ -510,17 +518,35 @@ export function ChatView({
   const sessionIdRef = useRef<number | null>(currentSessionId);
   sessionIdRef.current = currentSessionId;
 
+  // Gemini 对话上下文（cid/rid/rcid）
+  const conversationMetaRef = useRef<{ conversation_id?: string; response_id?: string; choice_id?: string }>({});
+
   // 会话历史加载（localStorage 适配层，同步）
+  // 只在真正切换会话（两个非 null ID 不同）时清空 metadata
+  const prevSessionIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (!currentSessionId || streaming) {
-      if (!currentSessionId) setMessages([]);
+      if (!currentSessionId) {
+        console.log('[gg] metadata CLEAR: no session');
+        setMessages([]);
+        conversationMetaRef.current = {};
+        prevSessionIdRef.current = null;
+      }
       return;
     }
+    // 只在从一个有效会话切换到另一个不同会话时清空（初始化不清空）
+    if (prevSessionIdRef.current !== null && prevSessionIdRef.current !== currentSessionId) {
+      console.log(`[gg] metadata CLEAR: session switch ${prevSessionIdRef.current} -> ${currentSessionId}`);
+      conversationMetaRef.current = {};
+    }
+    prevSessionIdRef.current = currentSessionId;
     const data = api.getSessionMessages(currentSessionId);
     setMessages(data.messages.map((m) => ({
       id: uid(),
       role: m.role as 'user' | 'assistant',
       content: m.content,
+      image: m.image,
+      attachment: m.attachment,
     })));
   }, [currentSessionId, streaming]);
 
@@ -534,11 +560,14 @@ export function ChatView({
   // ---- 附件（图片 data URL / 文本内容）----
 
   const handleAttach = useCallback((f: AttachedFile) => {
-    setAttachedFile(f);
+    setAttachedFiles((prev) => [...prev, f]);
   }, []);
 
-  const handleDetach = useCallback(() => {
-    setAttachedFile(null);
+  const handleDetach = useCallback((index?: number) => {
+    setAttachedFiles((prev) => {
+      if (index === undefined) return [];
+      return prev.filter((_, i) => i !== index);
+    });
   }, []);
 
   // ---- 保存会话消息 ----
@@ -547,7 +576,12 @@ export function ChatView({
     if (!sessionId) return;
     api.saveSessionMessages(
       sessionId,
-      msgs.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })),
+      msgs.filter((m) => m.content || m.image || m.attachment).map((m) => ({
+        role: m.role,
+        content: m.content,
+        image: m.image,
+        attachment: m.attachment,
+      })),
     );
   }, []);
 
@@ -555,12 +589,12 @@ export function ChatView({
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if ((!text && !attachedFile) || streaming) return;
+    if ((!text && attachedFiles.length === 0) || streaming) return;
     if (!text && activeTool !== 'image') return;
 
     setInput('');
-    const currentAttachment = attachedFile;
-    setAttachedFile(null);
+    const currentFiles = attachedFiles;
+    setAttachedFiles([]);
 
     // 确保会话存在
     let activeSessionId = sessionIdRef.current;
@@ -571,12 +605,15 @@ export function ChatView({
       onSessionCreated(session.id);
     }
 
-    const attachment = currentAttachment ? {
-      type: currentAttachment.type,
-      filename: currentAttachment.file.name,
-      previewUrl: currentAttachment.type === 'image' ? currentAttachment.dataUrl : undefined,
-      dataUrl: currentAttachment.type === 'image' ? currentAttachment.dataUrl : undefined,
-      text: currentAttachment.type === 'text' ? currentAttachment.text : undefined,
+    // 构建附件信息（支持多图）
+    const imageFiles = currentFiles.filter((f) => f.type === 'image' && f.dataUrl);
+    const firstText = currentFiles.find((f) => f.type === 'text');
+    const attachment = currentFiles.length > 0 ? {
+      type: imageFiles.length > 0 ? 'image' as const : 'text' as const,
+      filename: currentFiles.map((f) => f.file.name).join(', '),
+      previewUrls: imageFiles.map((f) => f.dataUrl!),
+      dataUrl: imageFiles[0]?.dataUrl,
+      text: firstText?.text,
     } : undefined;
 
     const userMsg: Msg = {
@@ -612,7 +649,16 @@ export function ChatView({
     try {
       // ---- 生成图片工具：直接走 /images/generations 端点（已验证 208KB 成功）----
       if (activeTool === 'image') {
-        const result = await api.generateImage('gemini-3.1-pro', text, controller.signal);
+        const result = await api.generateImage('gemini-3-pro-image', text, controller.signal, conversationMetaRef.current);
+        // 保存对话元数据（下次请求带上）
+        if (result.conversation_id) {
+          conversationMetaRef.current = {
+            conversation_id: result.conversation_id,
+            response_id: result.response_id,
+            choice_id: result.choice_id,
+          };
+          console.log(`[gg] metadata SAVED from image | CID=${result.conversation_id}`);
+        }
         finish({ image: result.image, streaming: false, content: '' }, { persist: true });
       }
       // ---- 深度研究工具 ----
@@ -643,13 +689,32 @@ export function ChatView({
       }
       // ---- 普通对话（含图片视觉 / 文本附件）----
       else {
-        let outboundText = text;
-        if (attachment?.type === 'text' && attachment.text) {
-          outboundText = `${text}\n\n--- 附件：${attachment.filename} ---\n${attachment.text}`;
+        // 构建消息内容：如果有附件，使用 multipart 格式
+        const hasFiles = currentFiles.length > 0;
+        let userContent: any;
+
+        if (hasFiles) {
+          // 使用 OpenAI 格式发送附件（带原始文件名）
+          const parts: any[] = [];
+          if (text) parts.push({ type: 'text', text });
+          for (const f of currentFiles) {
+            if (f.dataUrl) {
+              // 有 dataUrl 的文件（图片、PDF等二进制）：带文件名发送
+              parts.push({ type: 'image_url', image_url: { url: f.dataUrl }, filename: f.file.name });
+            } else if (f.type === 'text' && f.text) {
+              // 纯文本文件：转为 data URL，带文件名
+              const dataUrl = `data:text/plain;base64,${btoa(unescape(encodeURIComponent(f.text)))}`;
+              parts.push({ type: 'image_url', image_url: { url: dataUrl }, filename: f.file.name });
+            }
+          }
+          userContent = parts;
+        } else {
+          userContent = text;
         }
+
         const history: ChatMessage[] = [
           ...messages.map((m) => ({ role: m.role, content: m.content })),
-          { role: 'user', content: outboundText },
+          { role: 'user', content: userContent as any },
         ];
 
         let acc = '';
@@ -659,8 +724,17 @@ export function ChatView({
           reqModel, history, 2048, 0.7,
           attachment?.type === 'image' ? attachment.dataUrl : undefined,
           undefined, controller.signal, enableThinking, activeSessionId,
+          conversationMetaRef.current,
         )) {
-          if (event.type === 'content') {
+          if ((event as any).type === 'metadata' && (event as any).conversationId) {
+            // 保存对话元数据（下次请求带上）
+            conversationMetaRef.current = {
+              conversation_id: (event as any).conversationId,
+              response_id: (event as any).responseId,
+              choice_id: (event as any).choiceId,
+            };
+            console.log(`[gg] metadata SAVED | CID=${(event as any).conversationId} | RID=${(event as any).responseId} | RCID=${(event as any).choiceId}`);
+          } else if (event.type === 'content') {
             acc += event.text;
             const now = Date.now();
             if (now - lastFlush >= 120) { lastFlush = now; finish({ content: acc }); }
@@ -690,7 +764,7 @@ export function ChatView({
       abortRef.current = null;
       setStreaming(false);
     }
-  }, [input, streaming, model, messages, attachedFile, activeTool, enableThinking, onSessionCreated, persistMessages]);
+  }, [input, streaming, model, messages, attachedFiles, activeTool, enableThinking, onSessionCreated, persistMessages]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -704,7 +778,7 @@ export function ChatView({
     setInput(e.target.value);
     const el = e.target;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    el.style.height = Math.max(28, Math.min(el.scrollHeight, 160)) + 'px';
   }, []);
 
   const handleCopyMessage = useCallback((content: string) => {
@@ -760,7 +834,7 @@ export function ChatView({
 
   const shared = {
     tool: activeTool,
-    attached: attachedFile,
+    attached: attachedFiles,
     streaming,
     input,
     onInput: handleInput,
@@ -787,17 +861,17 @@ export function ChatView({
           <Composer {...shared} />
         </div>
         <div style={{ marginTop: 12, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          Gemini Web v{__BUILD_ID__} · 可能会犯错，请核查重要信息。
+          Gemini Web · AI可能会犯错，请核查重要信息。
         </div>
       </div>
     </div>
   );
 
   const chatStream = (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0" style={{ minHeight: 0 }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         <div className="w-full flex justify-center">
-          <div style={{ width: '100%', maxWidth: 720, padding: '32px 24px 32px', display: 'flex', flexDirection: 'column', gap: 40 }}>
+          <div style={{ width: '100%', maxWidth: 720, padding: window.innerWidth < 768 ? '16px 12px 16px' : '32px 24px 32px', display: 'flex', flexDirection: 'column', gap: window.innerWidth < 768 ? 24 : 40 }}>
             {messages.map((m) => (
               <Bubble
                 key={m.id}
@@ -812,12 +886,12 @@ export function ChatView({
           </div>
         </div>
       </div>
-      <div style={{ width: '100%', flexShrink: 0, padding: '8px 24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ width: '100%', flexShrink: 0, minHeight: 56, padding: window.innerWidth < 768 ? '8px 12px 12px' : '8px 24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{ width: '100%', maxWidth: 680 }}>
           <Composer {...shared} />
         </div>
         <div style={{ marginTop: 10, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          Gemini Web v{__BUILD_ID__} · 可能会犯错，请核查重要信息。
+          Gemini Web · AI可能会犯错，请核查重要信息。
         </div>
       </div>
     </div>

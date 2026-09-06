@@ -13,6 +13,8 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
+import time
 from typing import Optional
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -146,13 +148,15 @@ class Handler(BaseHTTPRequestHandler):
         # PSIDTS 保持为空：由后端自动轮换 + 缓存文件管理，避免过期值覆盖缓存
         new = set_env_value(new, "GEMINI_1PSIDTS", "")
         env_changed = new != orig
+        if env_changed:
+            write_env(new)
 
         cache_changed = write_backend_cookie_cache(psid, psidts)
         log(f"收到 Cookie 推送: psid={psid[:10]}… env变化={env_changed} 缓存变化={cache_changed}")
 
-        if env_changed or cache_changed:
-            restart_backend()
         self._json(200, {"ok": True, "changed": env_changed or cache_changed})
+        if env_changed or cache_changed:
+            threading.Thread(target=restart_backend, daemon=True).start()
 
     def handle_models_config(self):
         data = self._authed_body()

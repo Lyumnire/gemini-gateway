@@ -1,18 +1,43 @@
-# 敏感信息：绝不提交
+# ===== 敏感信息：绝不提交 =====
 .env
-data/
+.env.*
+!.env.example
 *.cookie
 cookies*
+*.pem
+*.key
 
-# 依赖与构建产物
-frontend/node_modules/
-frontend/dist/
-dev-dist/
-
-# 系统文件
-.DS_Store
+# ===== 运行时数据（用户数据库 / Cookie 缓存 / 调试产物）=====
+data/
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+logs/
 *.log
 
-# vendor 的上游源码（其自身是 git 仓库，不纳入本项目版本管理）
-backend/src/
+# ===== Go 后端：源码跟踪，构建产物与依赖排除 =====
+backend/src/vendor/
+backend/src/build/
+backend/src/backend/
+
+# ===== 前端 =====
+frontend/node_modules/
+frontend/dist/
+frontend/dev-dist/
+frontend/dev-dist/
+node_modules/
+dist/
+
+# ===== Cookie 同步扩展（构建产物，含烘焙 Token，不入库）=====
 cookie-sync/extension-dist/
+cookie-sync/__pycache__/
+__pycache__/
+*.pyc
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== 手动推送页本地副本（含烘焙 Token，不入库）=====
+cookie-sync/cookie-sync-local.html

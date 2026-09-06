@@ -1,7 +1,7 @@
 # buildx 容器构建器（ggbuilder）专用配置：
 # 1) docker.io 走国内可达镜像站，绕开被 DNS 污染的 auth.docker.io；
 # 2) 给构建 RUN 步骤指定国内干净 DNS（容器默认 DNS 会被污染，
-#    例如 goproxy.io 被解析到 192.168.31.245 这类内网假地址）。
+#    例如 goproxy.io 被解析到 192.168.x.x 这类内网假地址）。
 [registry."docker.io"]
   mirrors = ["https://docker.1panel.live", "https://docker.1ms.run", "https://docker.m.daocloud.io"]
 

@@ -1,17 +1,69 @@
 /**
- * App — 根组件：单一对话流（生图/深度研究作为 + 工具融合在对话里）。
+ * App — 根组件：认证网关 + 单一对话流（生图/深度研究作为 + 工具融合在对话里）。
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Layout, type SessionEntry } from './components/Layout';
 import { ChatView } from './components/ChatView';
+import { LoginPage } from './components/LoginPage';
+import { RegisterPage } from './components/RegisterPage';
+import { SettingsPage } from './components/SettingsPage';
 import type { Tool } from './components/Composer';
 import { useModels } from './hooks/useModels';
-import { api } from './lib/api_client';
+import { api, getToken, setToken, clearToken, setOnUnauthorized, type UserProfile } from './lib/api_client';
+
+type AuthPage = 'login' | 'register';
 
 export default function App() {
+  const [authPage, setAuthPage] = useState<AuthPage | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setAuthPage('login');
+    }
+    setAuthChecked(true);
+    setOnUnauthorized(() => {
+      setAuthPage('login');
+    });
+  }, []);
+
+  const handleLogin = useCallback(async (token: string) => {
+    setToken(token);
+    setAuthPage(null);
+    await api.syncFromServer();
+    window.location.reload();
+  }, []);
+
+  const handleRegister = useCallback(async (token: string) => {
+    setToken(token);
+    setAuthPage(null);
+    window.location.reload();
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    clearToken();
+    setAuthPage('login');
+  }, []);
+
+  if (!authChecked) return null;
+
+  if (authPage === 'login') {
+    return <LoginPage onLogin={handleLogin} onSwitchToRegister={() => setAuthPage('register')} />;
+  }
+  if (authPage === 'register') {
+    return <RegisterPage onRegister={handleRegister} onSwitchToLogin={() => setAuthPage('login')} />;
+  }
+
+  return <AppContent onLogout={handleLogout} />;
+}
+
+function AppContent({ onLogout }: { onLogout: () => void }) {
   const { models, loading } = useModels();
   const [selectedModel, setSelectedModel] = useState('');
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const [sessions, setSessions] = useState<SessionEntry[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
@@ -20,11 +72,15 @@ export default function App() {
 
   const modelNames = Object.keys(models.llm || {});
 
+  // 加载用户资料
+  useEffect(() => {
+    api.getProfile().then(setUser).catch(() => {});
+  }, []);
+
   const fetchSessions = useCallback(() => {
     setSessions(api.getSessions());
   }, []);
 
-  // 会话列表只在挂载时拉取一次（避免 modelNames 每次渲染都是新数组引发无限更新）
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
@@ -32,7 +88,6 @@ export default function App() {
   const modelNamesKey = modelNames.join(',');
   useEffect(() => {
     if (loading || selectedModel || modelNames.length === 0) return;
-    // 默认旗舰别名：gemini-advanced
     setSelectedModel(
       modelNames.includes('gemini-advanced') ? 'gemini-advanced' : modelNames[0],
     );
@@ -52,16 +107,16 @@ export default function App() {
     setCurrentSessionId(null);
   }, []);
 
-  // 官方式工具切换：生成图片 → 模型自动切到 3.1 Pro（聊天内直接出图）；取消恢复
+  const imageModel = ['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'].find(m => modelNames.includes(m)) || 'gemini-3-pro-image';
   const handleToolChange = useCallback((t: Tool | null) => {
     setActiveTool(t);
     if (t === 'image') {
       modelBeforeToolRef.current = selectedModel;
-      setSelectedModel('gemini-3.1-pro');
-    } else if (t === null && selectedModel === 'gemini-3.1-pro') {
+      setSelectedModel(imageModel);
+    } else if (t === null && selectedModel === imageModel) {
       setSelectedModel(modelBeforeToolRef.current || 'gemini-advanced');
     }
-  }, [selectedModel]);
+  }, [selectedModel, imageModel]);
 
   const handleSessionCreated = useCallback((id: number) => {
     setCurrentSessionId(id);
@@ -69,24 +124,39 @@ export default function App() {
   }, [fetchSessions]);
 
   return (
-    <Layout
-      models={models.llm || {}}
-      selectedModel={selectedModel}
-      onModelChange={setSelectedModel}
-      sessions={sessions}
-      currentSessionId={currentSessionId}
-      onSessionSelect={handleSessionSelect}
-      onSessionDelete={handleSessionDelete}
-      onNewChat={handleNewChat}
-    >
-      <ChatView
-        model={selectedModel}
-        models={models}
+    <>
+      <Layout
+        models={models.llm || {}}
+        imageModels={models.image || {}}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
         activeTool={activeTool}
-        onToolChange={handleToolChange}
+        sessions={sessions}
         currentSessionId={currentSessionId}
-        onSessionCreated={handleSessionCreated}
-      />
-    </Layout>
+        onSessionSelect={handleSessionSelect}
+        onSessionDelete={handleSessionDelete}
+        onNewChat={handleNewChat}
+        user={user}
+        onSettingsClick={() => setShowSettings(true)}
+      >
+        <ChatView
+          model={selectedModel}
+          models={models}
+          activeTool={activeTool}
+          onToolChange={handleToolChange}
+          currentSessionId={currentSessionId}
+          onSessionCreated={handleSessionCreated}
+        />
+      </Layout>
+
+      {showSettings && user && (
+        <SettingsPage
+          user={user}
+          onClose={() => setShowSettings(false)}
+          onLogout={() => { setShowSettings(false); onLogout(); }}
+          onUserUpdate={(u) => { setUser(u); setShowSettings(false); }}
+        />
+      )}
+    </>
   );
 }

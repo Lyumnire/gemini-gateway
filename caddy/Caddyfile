@@ -17,36 +17,37 @@
 	}
 
 	route {
-		# 1. 图片代理（公开，免认证）
+		# 1. 认证端点（公开，免JWT）
+		@auth path /auth/*
+		handle @auth {
+			reverse_proxy gemini-api:4981
+		}
+
+		# 2. 图片代理（公开，免JWT）
 		@proxy path /proxy-image/*
 		handle @proxy {
 			reverse_proxy gemini-api:4981
 		}
 
-		# 2. PWA 静态资源
+		# 3. PWA 静态资源
 		@static path /manifest.webmanifest /favicon.svg /pwa-192.png /pwa-512.png
 		handle @static {
 			root * /srv/www
 			file_server
 		}
 
-		# 3. 健康检查
+		# 4. 健康检查
 		handle /health {
 			reverse_proxy gemini-api:4981
 		}
 
-		# 4. 密码认证
-		basic_auth {
-			{$GATEWAY_USER} $2a$14$oksee647jm2jhKzhU2vTQ.Pm9kQfFKvTq2U0HhvvZvj9c4qmlKupe
-		}
-
-		# 5. API 反代
-		@api path /openai/* /claude/* /gemini/* /docs /openapi.json
+		# 5. API 反代（JWT由后端中间件验证）
+		@api path /openai/* /claude/* /gemini/* /conversations /conversations/* /docs /openapi.json
 		handle @api {
 			reverse_proxy gemini-api:4981
 		}
 
-		# 6. SPA
+		# 6. SPA（JWT由后端中间件验证）
 		handle {
 			root * /srv/www
 			try_files {path} /index.html

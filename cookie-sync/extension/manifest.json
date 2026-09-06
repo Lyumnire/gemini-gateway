@@ -3,7 +3,7 @@
   "name": "Gemini Gateway Cookie Sync",
   "version": "2.0.0",
   "description": "自动将本机 gemini.google.com 的登录 Cookie 与模型令牌同步到私人网关（仅本机回环）",
-  "permissions": ["cookies", "alarms", "storage"],
+  "permissions": ["cookies", "alarms", "storage", "webNavigation"],
   "host_permissions": [
     "https://gemini.google.com/*",
     "http://127.0.0.1:8799/*"

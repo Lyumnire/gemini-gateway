@@ -13,14 +13,14 @@
 ## 一、首次部署（已完成的部分可以跳过）
 
 1. **安装**（本机已就绪）：OrbStack、cloudflared、Node、Clash Verge(7897)。
-2. **生成配置**：`python3 scripts/gen_env.py` → 生成 `.env` 与随机访问密码
-   （改密码：`python3 scripts/gen_env.py --reset-pw`，会打印新密码）。
+2. **生成配置**：`cp .env.example .env` 并编辑；公网部署务必设置
+   `GATEWAY_JWT_SECRET`（`openssl rand -hex 32`）与 `GATEWAY_INVITE_CODE`。
 3. **获取 Cookie**（见下节）填入 `.env` 的 `GEMINI_1PSID` / `GEMINI_1PSIDTS`。
 4. **构建后端镜像**：`./scripts/build-backend.sh`（官方镜像无 arm64，本机构建）。
 5. **构建前端**：`cd frontend && npm install && npm run build`。
 6. **启动全部服务**：`docker compose up -d`。
 7. **查看地址**：`./scripts/url.sh` → `https://xxxx.trycloudflare.com`，
-   账号 `admin` + 生成的密码。
+   打开后用邀请码注册账号（或用已有账号登录）。
 
 ## 二、获取 Cookie（推荐：装一次自动同步扩展，之后零人工）
 
@@ -55,10 +55,10 @@ gemini.google.com 时 Cookie 会自动推送到网关——彻底过期后重新
 | 看当前公网地址 | `./scripts/url.sh` |
 | 自检 | `./scripts/verify.sh` |
 | 更新后端上游 | `scripts/update.sh` |
-| 改访问密码 | `python3 scripts/gen_env.py --reset-pw` 后 `docker compose up -d caddy` |
+| 修改密码 | 登录后右上角头像 → 设置 → 修改密码（JWT 用户系统） |
 
 **局域网直连**（手机连家里 WiFi，不走隧道也能用）：访问
-`http://<Mac的局域网IP>:8080`，同样需要账号密码。Mac 的 IP 在
+`http://<Mac的局域网IP>:8080`，同样需要注册/登录账号。Mac 的 IP 在
 系统设置 → Wi-Fi → 详细信息里查看。
 
 ## 四、开机自启（重启后自动恢复）
@@ -126,14 +126,14 @@ gemini.google.com 时 Cookie 会自动推送到网关——彻底过期后重新
 | 公网 530 | 边缘连接没建立：确认 Clash 节点非 CF 系（见第六节前提 2），`docker compose restart cloudflared` |
 | 消息一直"思考中"后报错 | `./scripts/logs.sh gemini-api`：多为 cookie 失效（重新抄 Cookie）或 Clash 断了 |
 | 后端容器一直重启 | 正常现象（未填/填错 cookie）；看日志确认错误类型 |
-| 网页弹出两次密码框 | 浏览器记住凭据即可；若频繁出现清一次浏览器站点数据 |
+| 登录态频繁失效 | 检查 `GATEWAY_JWT_SECRET` 是否在重启间保持一致（compose 注入）；浏览器不要开无痕 |
 | 回复出现 "Session error" | 上游会话令牌过期，后端会自动轮换重试；持续出现则重抄 Cookie |
 | 出口 IP 想确认走没走 Clash | `curl -x http://127.0.0.1:7897 https://api.ipify.org` 与后端日志比对 |
 | API 请求经 Caddy 挂起/超时 | **OrbStack 会随 macOS 系统代理向所有容器注入 `HTTP(S)_PROXY`**，反代到内部容器名的请求会被误发给 Clash。已在 compose 中用 `NO_PROXY=…gemini-api` 豁免；若改动服务名，记得同步更新 caddy 的 NO_PROXY |
 
 ## 八、安全清单
 
-- [x] 后端不发布端口，仅容器网络可达；入口必须过 Caddy 认证
+- [x] 后端不发布端口，仅容器网络可达；入口由 JWT 中间件保护
 - [x] `.env`（含 Cookie 与密码哈希）被 `.gitignore` 排除
 - [x] Cookie 缓存目录 `data/cookies/` 同样排除
 - [x] 全链路 HTTPS（隧道 TLS 由 Cloudflare 终结）
