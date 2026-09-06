@@ -592,7 +592,7 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 	}
 
 	requestID := strings.ToUpper(uuid.NewString())
-	inner := buildGenerateInner(prompt, uploadedFiles, config.Model, language, requestID, c.defaultTemporary)
+	inner := buildGenerateInner(prompt, uploadedFiles, config.Model, language, requestID, c.defaultTemporary || config.Temporary)
 
 	// 如果有对话元数据，注入到 inner[2]（对话上下文）
 	// 格式：inner[2][0] = cid，inner[2][1] = rid，inner[2][2] = rcid
@@ -679,7 +679,7 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 			httpReq.Header.Set("x-goog-ext-525005358-jspb", fmt.Sprintf(`["%s",1]`, requestID))
 		}
 		modeFlag := 0
-		if c.defaultTemporary {
+		if c.defaultTemporary || config.Temporary {
 			modeFlag = 1
 		}
 		traceID := strings.ReplaceAll(uuid.NewString(), "-", "")[:16]

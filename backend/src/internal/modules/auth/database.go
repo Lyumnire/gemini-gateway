@@ -71,5 +71,7 @@ func migrate(db *sql.DB) error {
 	}
 	// 迁移：为 users 表添加 avatar 列（如果不存在）
 	db.Exec("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''")
+	// 迁移：conversations 增加 title_source（auto=可被自动标题覆盖，manual=用户手改后锁定）
+	db.Exec("ALTER TABLE conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'auto'")
 	return nil
 }

@@ -205,9 +205,26 @@ func (h *OpenAIController) HandleImageGenerations(c fiber.Ctx) error {
 	return nil
 }
 
+// HandleTitleGeneration generates a short conversation title from the first
+// exchange. Runs in its own temporary Gemini chat — independent of any
+// conversation continuation chain.
+func (h *OpenAIController) HandleTitleGeneration(c fiber.Ctx) error {
+	var req dto.TitleGenerationRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorToResponse(fmt.Errorf("invalid request body: %w", err), "invalid_request_error"))
+	}
+	title, err := h.service.GenerateTitle(c.Context(), req.UserMessage, req.AssistantReply)
+	if err != nil {
+		h.log.Warn("GenerateTitle failed", zap.Error(err))
+		return c.Status(fiber.StatusBadGateway).JSON(utils.ErrorToResponse(err, "api_error"))
+	}
+	return c.JSON(dto.TitleGenerationResponse{Title: title})
+}
+
 // Register registers the OpenAI routes onto the provided group
 func (c *OpenAIController) Register(group fiber.Router) {
 	group.Get("/models", c.HandleModels)
 	group.Post("/chat/completions", c.HandleChatCompletions)
 	group.Post("/images/generations", c.HandleImageGenerations)
+	group.Post("/titles", c.HandleTitleGeneration)
 }

@@ -117,6 +117,17 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
     setCurrentSessionId((cur) => (cur === id ? null : cur));
   }, []);
 
+  // 手动重命名：写入 titleSource=manual，此后自动标题永不覆盖
+  const handleSessionRename = useCallback((id: number, title: string) => {
+    api.updateSessionTitle(id, title, 'manual');
+    fetchSessions();
+  }, [fetchSessions]);
+
+  // 自动标题生成完成后刷新侧边栏
+  const handleTitleUpdated = useCallback(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
   const handleNewChat = useCallback(() => {
     setCurrentSessionId(null);
   }, []);
@@ -149,6 +160,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
         currentSessionId={currentSessionId}
         onSessionSelect={handleSessionSelect}
         onSessionDelete={handleSessionDelete}
+        onSessionRename={handleSessionRename}
         onNewChat={handleNewChat}
         user={user}
         onSettingsClick={() => setShowSettings(true)}
@@ -160,6 +172,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
           onToolChange={handleToolChange}
           currentSessionId={currentSessionId}
           onSessionCreated={handleSessionCreated}
+          onTitleUpdated={handleTitleUpdated}
         />
       </Layout>
 

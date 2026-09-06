@@ -126,6 +126,8 @@ export interface SessionRecord {
   model_name: string | null;
   created_at: string;
   messages: Array<{ role: string; content: string; image?: string; attachment?: any }>;
+  titleSource?: 'auto' | 'manual';   // manual = 用户手改过，自动标题永不覆盖
+  titleGenerated?: boolean;          // 自动标题已生成完成（成功后锁定）
 }
 
 const SESSIONS_KEY = 'gg-sessions';
@@ -513,6 +515,8 @@ export const api = {
       model_name: modelName ?? null,
       created_at: new Date().toISOString(),
       messages: [],
+      titleSource: 'auto',
+      titleGenerated: false,
     };
     store[id] = rec;
     saveStore(store);
@@ -520,7 +524,7 @@ export const api = {
     // 异步同步到服务端（不阻塞 UI）
     request<{ id: number }>('/conversations', {
       method: 'POST',
-      body: JSON.stringify({ title, model: modelName }),
+      body: JSON.stringify({ title, model: modelName, title_source: 'auto' }),
     }).then((data) => {
       rec.server_id = data.id;
       const s = loadStore();
@@ -579,20 +583,69 @@ export const api = {
   },
 
   // ----------------------------------------------------------------
+  // 会话标题：自动生成 + 手动重命名
+  // ----------------------------------------------------------------
+
+  /** 请求网关为第一轮对话生成简短标题（网关内部走独立临时会话，不污染主对话） */
+  generateTitle: async (userMessage: string, assistantReply: string): Promise<string> => {
+    const data = await request<{ title: string }>('/openai/v1/titles', {
+      method: 'POST',
+      body: JSON.stringify({ user_message: userMessage, assistant_reply: assistantReply }),
+    });
+    return data.title;
+  },
+
+  /** 是否应为该会话生成自动标题（手动改过名或已生成过 → false） */
+  shouldGenerateTitle: (sessionId: number): boolean => {
+    const rec = loadStore()[sessionId];
+    if (!rec) return false;
+    return rec.titleSource !== 'manual' && !rec.titleGenerated;
+  },
+
+  /**
+   * 更新会话标题（localStorage + 服务端双写）。
+   * source='manual' 时锁定，自动标题生成永不覆盖；
+   * source='auto' 时标记 titleGenerated=true（成功后锁定）。
+   */
+  updateSessionTitle: (sessionId: number, title: string, source: 'auto' | 'manual'): SessionRecord | null => {
+    const store = loadStore();
+    const rec = store[sessionId];
+    if (!rec) return null;
+    rec.title = title;
+    rec.titleSource = source;
+    if (source === 'auto') rec.titleGenerated = true;
+    saveStore(store);
+
+    if (rec.server_id) {
+      request(`/conversations/${rec.server_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title, title_source: source }),
+      }).catch(() => {});
+    }
+    return rec;
+  },
+
+  // ----------------------------------------------------------------
   // 登录后从服务端拉取会话列表（合并到 localStorage）
   // ----------------------------------------------------------------
 
   syncFromServer: async (): Promise<void> => {
     try {
-      const serverConvs = await request<Array<{ id: number; title: string; model: string; created_at: string; updated_at: string }>>('/conversations');
+      const serverConvs = await request<Array<{ id: number; title: string; model: string; title_source?: string; created_at: string; updated_at: string }>>('/conversations');
       const store = loadStore();
 
       for (const conv of serverConvs) {
         const existing = findLocalByServerId(store, conv.id);
         if (existing) {
-          // 更新标题等元数据
+          // 更新标题等元数据；manual 标题以服务端为准，auto 标题同步后视为已生成
           existing.title = conv.title;
           existing.model_name = conv.model;
+          if (conv.title_source === 'manual') {
+            existing.titleSource = 'manual';
+          } else if (existing.titleSource !== 'manual') {
+            existing.titleSource = 'auto';
+            existing.titleGenerated = true;
+          }
         } else {
           // 从服务端拉取新会话
           try {
@@ -606,6 +659,8 @@ export const api = {
               model_name: conv.model,
               created_at: conv.created_at,
               messages: detail.messages.map(m => ({ role: m.role, content: m.content })),
+              titleSource: conv.title_source === 'manual' ? 'manual' : 'auto',
+              titleGenerated: true, // 服务端已有会话不再自动生成
             };
           } catch { /* skip */ }
         }

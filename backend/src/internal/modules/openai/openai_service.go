@@ -696,3 +696,107 @@ func normalizeArguments(raw json.RawMessage) string {
 	}
 	return compact.String()
 }
+
+// ---------------------------------------------------------------------------
+// 会话标题自动生成（独立临时会话，不污染主对话的 CID/RID/RCID 链）
+// ---------------------------------------------------------------------------
+
+// pickTitleModel chooses a fast text model for title generation.
+func (s *OpenAIService) pickTitleModel() string {
+	ids := s.client.ListModelsIDs()
+	for _, pref := range []string{"gemini-2.5-flash", "gemini-2.0-flash", "gemini-3-flash-preview"} {
+		for _, id := range ids {
+			if id == pref {
+				return pref
+			}
+		}
+	}
+	for _, id := range ids {
+		// 避开图像/TTS 等非文本模型
+		if !strings.Contains(id, "image") && !strings.Contains(id, "tts") {
+			return id
+		}
+	}
+	return "gemini-2.5-flash"
+}
+
+// sanitizeTitle cleans up model output into a usable title: strips quotes,
+// markdown decoration and surrounding whitespace, clamps to 24 runes.
+func sanitizeTitle(raw string) string {
+	t := strings.TrimSpace(raw)
+	// 去掉模型可能加的包裹符号与 markdown 修饰
+	for _, pair := range [][2]string{
+		{"「", "」"}, {"『", "』"}, {"“", "”"}, {"『", "』"},
+		{"\"", "\""}, {"'", "'"}, {"#", ""}, {"*", ""},
+	} {
+		t = strings.TrimPrefix(t, pair[0])
+		t = strings.TrimSuffix(t, pair[1])
+		t = strings.TrimSpace(t)
+	}
+	// 取第一行（防止输出解释文字）
+	if idx := strings.IndexAny(t, "\n。；;"); idx > 0 {
+		t = t[:idx]
+	}
+	t = strings.TrimSpace(t)
+	// rune 安全截断到 24 字（sidebar 负责进一步 ellipsis）
+	runes := []rune(t)
+	if len(runes) > 24 {
+		t = string(runes[:24])
+	}
+	return t
+}
+
+// GenerateTitle creates a short conversation title from the first exchange.
+// Runs as its own temporary Gemini chat — never touches the user's
+// conversation continuation chain and never appears in gemini.google.com
+// history.
+func (s *OpenAIService) GenerateTitle(ctx context.Context, userMessage, assistantReply string) (string, error) {
+	um := strings.TrimSpace(userMessage)
+	ar := strings.TrimSpace(assistantReply)
+	if um == "" {
+		return "", fmt.Errorf("user message is required")
+	}
+	// 控制输入体积：标题只需要主题概要
+	um = truncateRunes(um, 600)
+	ar = truncateRunes(ar, 600)
+
+	var b strings.Builder
+	b.WriteString("你是一个标题生成器。根据下面的对话内容生成一个简短标题。\n")
+	b.WriteString("要求：\n")
+	b.WriteString("- 概括对话的核心主题\n")
+	b.WriteString("- 中文对话必须使用中文标题\n")
+	b.WriteString("- 长度5到15个字\n")
+	b.WriteString("- 不要使用引号，结尾不要标点\n")
+	b.WriteString("- 不要使用\"聊天\"\"对话\"\"问题\"\"求助\"等无意义词\n")
+	b.WriteString("- 不要照抄用户原话，要提炼主题\n")
+	b.WriteString("- 只返回标题本身，不要任何解释或前缀\n")
+	b.WriteString("\n用户：")
+	b.WriteString(um)
+	b.WriteString("\n\n助手：")
+	b.WriteString(ar)
+	b.WriteString("\n\n标题：")
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	response, err := s.client.GenerateContent(ctx, b.String(),
+		providers.WithModel(s.pickTitleModel()),
+		providers.WithTemporary(true),
+	)
+	if err != nil {
+		return "", err
+	}
+	title := sanitizeTitle(response.Text)
+	if title == "" {
+		return "", fmt.Errorf("empty title generated")
+	}
+	return title, nil
+}
+
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
+}

@@ -342,3 +342,15 @@ type ImageGenerationData struct {
 	B64JSON       string `json:"b64_json,omitempty"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 }
+
+// TitleGenerationRequest asks the gateway to generate a short conversation
+// title from the first user/assistant exchange.
+type TitleGenerationRequest struct {
+	UserMessage    string `json:"user_message"`
+	AssistantReply string `json:"assistant_reply"`
+}
+
+// TitleGenerationResponse returns the generated title.
+type TitleGenerationResponse struct {
+	Title string `json:"title"`
+}

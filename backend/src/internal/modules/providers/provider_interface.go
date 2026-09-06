@@ -99,6 +99,16 @@ type GenerateConfig struct {
 	MaxTokens               int
 	DownloadGeneratedImages bool
 	Metadata                *SessionMetadata // 对话上下文元数据（cid/rid/rcid）
+	Temporary               bool             // 临时会话：不进入 gemini.google.com 历史记录
+}
+
+// WithTemporary forces this single request to run as a temporary chat
+// (not saved to gemini.google.com history). Used by internal helpers
+// like title generation to avoid polluting the account's conversation list.
+func WithTemporary(temporary bool) GenerateOption {
+	return func(c *GenerateConfig) {
+		c.Temporary = temporary
+	}
 }
 
 // InputFile is an in-memory file to upload with a generation request.

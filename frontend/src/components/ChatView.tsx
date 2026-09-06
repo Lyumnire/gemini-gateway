@@ -497,7 +497,7 @@ class ViewErrorBoundary extends React.Component<
 
 export function ChatView({
   model, models: _models, activeTool, onToolChange,
-  currentSessionId, onSessionCreated,
+  currentSessionId, onSessionCreated, onTitleUpdated,
 }: {
   model: string;
   models: unknown;
@@ -505,6 +505,7 @@ export function ChatView({
   onToolChange: (t: Tool | null) => void;
   currentSessionId: number | null;
   onSessionCreated: (id: number) => void;
+  onTitleUpdated?: () => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
@@ -598,6 +599,7 @@ export function ChatView({
 
     // 确保会话存在
     let activeSessionId = sessionIdRef.current;
+    const isNewSession = !activeSessionId;
     if (!activeSessionId) {
       const session = api.createSession(text.slice(0, 50) || '新对话', 'chat', activeTool ?? model);
       activeSessionId = session.id;
@@ -753,6 +755,21 @@ export function ChatView({
           }
         }
         finish({ content: acc, thinking, streaming: false }, { persist: true });
+
+        // 第一轮回答完成后异步生成智能标题（fire-and-forget，不阻塞任何 UI/网络）
+        if (isNewSession && text.trim() && api.shouldGenerateTitle(activeSessionId)) {
+          const sid = activeSessionId;
+          // 剔除 base64 图片数据，避免撑爆标题生成输入
+          const replyForTitle = acc.replace(/data:[^;,]+;base64,[A-Za-z0-9+/=]+/g, '（图片）');
+          api.generateTitle(text, replyForTitle)
+            .then((title) => {
+              if (api.shouldGenerateTitle(sid)) {
+                api.updateSessionTitle(sid, title, 'auto');
+                onTitleUpdated?.();
+              }
+            })
+            .catch(() => { /* 失败保留首条消息作为 fallback 标题；下轮完成时自动重试 */ });
+        }
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
@@ -764,7 +781,7 @@ export function ChatView({
       abortRef.current = null;
       setStreaming(false);
     }
-  }, [input, streaming, model, messages, attachedFiles, activeTool, enableThinking, onSessionCreated, persistMessages]);
+  }, [input, streaming, model, messages, attachedFiles, activeTool, enableThinking, onSessionCreated, onTitleUpdated, persistMessages]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, type ReactNode } from 'react';
-import { Plus, Trash2, Menu, X } from 'lucide-react';
+import { Plus, Trash2, Menu, X, Pencil } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -94,11 +94,93 @@ function DeleteConfirm({
 }
 
 // ------------------------------------------------------------------
+// 重命名对话框（Enter 保存 / Esc 取消）
+// ------------------------------------------------------------------
+
+function RenameDialog({
+  title, onSave, onCancel,
+}: {
+  title: string;
+  onSave: (newTitle: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(title);
+  const trimmed = value.trim();
+  const canSave = trimmed.length > 0 && trimmed !== title;
+
+  return (
+    <div
+      onClick={onCancel}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel();
+        if (e.key === 'Enter' && canSave) onSave(trimmed);
+      }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 320, padding: '24px',
+          borderRadius: 20,
+          background: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(24px)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+          border: '1px solid rgba(255,255,255,0.6)',
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#1e293b', marginBottom: 14 }}>
+          重命名会话
+        </div>
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          maxLength={100}
+          style={{
+            width: '100%', padding: '10px 12px', marginBottom: 20,
+            borderRadius: 10, border: '1px solid rgba(148,163,184,0.4)',
+            fontSize: 13, color: '#1e293b', outline: 'none',
+            background: 'rgba(255,255,255,0.8)',
+            boxSizing: 'border-box',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '8px 18px', borderRadius: 10, border: 'none',
+              fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              background: 'rgba(15,23,42,0.06)', color: '#64748b',
+            }}
+          >
+            取消
+          </button>
+          <button
+            onClick={() => canSave && onSave(trimmed)}
+            style={{
+              padding: '8px 18px', borderRadius: 10, border: 'none',
+              fontSize: 13, fontWeight: 500, cursor: canSave ? 'pointer' : 'default',
+              background: canSave ? '#1e293b' : 'rgba(15,23,42,0.15)', color: '#fff',
+            }}
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
 // Sidebar
 // ------------------------------------------------------------------
 
 function Sidebar({
-  sessions, currentSessionId, onSessionSelect, onSessionDelete, onNewChat,
+  sessions, currentSessionId, onSessionSelect, onSessionDelete, onSessionRename, onNewChat,
   user, onSettingsClick,
   isMobile, open, onClose,
 }: {
@@ -106,6 +188,7 @@ function Sidebar({
   currentSessionId: number | null;
   onSessionSelect: (id: number) => void;
   onSessionDelete: (id: number) => void;
+  onSessionRename: (id: number, title: string) => void;
   onNewChat: () => void;
   user?: UserProfile | null;
   onSettingsClick?: () => void;
@@ -115,6 +198,7 @@ function Sidebar({
 }) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SessionEntry | null>(null);
+  const [renameTarget, setRenameTarget] = useState<SessionEntry | null>(null);
 
   const handleSelect = (id: number) => {
     onSessionSelect(id);
@@ -141,6 +225,18 @@ function Sidebar({
           title={deleteTarget.title}
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* 重命名 */}
+      {renameTarget && (
+        <RenameDialog
+          title={renameTarget.title}
+          onSave={(newTitle) => {
+            onSessionRename(renameTarget.id, newTitle);
+            setRenameTarget(null);
+          }}
+          onCancel={() => setRenameTarget(null)}
         />
       )}
 
@@ -274,6 +370,31 @@ function Sidebar({
                   >
                     {s.title || '新对话'}
                   </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRenameTarget(s);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      color: '#94a3b8',
+                      flexShrink: 0,
+                      transition: 'opacity 0.15s',
+                      opacity: (isHovered || (isMobile && isCurrent)) ? 1 : 0,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#1e293b'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                  >
+                    <Pencil size={13} />
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -473,7 +594,7 @@ function Header({
 
 export function Layout({
   models, imageModels, selectedModel, onModelChange, activeTool,
-  sessions, currentSessionId, onSessionSelect, onSessionDelete, onNewChat,
+  sessions, currentSessionId, onSessionSelect, onSessionDelete, onSessionRename, onNewChat,
   user, onSettingsClick,
   children,
 }: {
@@ -486,6 +607,7 @@ export function Layout({
   currentSessionId: number | null;
   onSessionSelect: (id: number) => void;
   onSessionDelete: (id: number) => void;
+  onSessionRename: (id: number, title: string) => void;
   onNewChat: () => void;
   user?: UserProfile | null;
   onSettingsClick?: () => void;
@@ -501,6 +623,7 @@ export function Layout({
         currentSessionId={currentSessionId}
         onSessionSelect={onSessionSelect}
         onSessionDelete={onSessionDelete}
+        onSessionRename={onSessionRename}
         onNewChat={onNewChat}
         user={user}
         onSettingsClick={onSettingsClick}
