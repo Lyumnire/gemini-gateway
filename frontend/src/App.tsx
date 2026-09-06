@@ -10,7 +10,7 @@ import { RegisterPage } from './components/RegisterPage';
 import { SettingsPage } from './components/SettingsPage';
 import type { Tool } from './components/Composer';
 import { useModels } from './hooks/useModels';
-import { api, getToken, setToken, clearToken, setOnUnauthorized, type UserProfile } from './lib/api_client';
+import { api, getToken, setToken, clearToken, setOnUnauthorized, readCachedProfile, cacheProfile, type UserProfile } from './lib/api_client';
 
 type AuthPage = 'login' | 'register';
 
@@ -62,7 +62,8 @@ export default function App() {
 function AppContent({ onLogout }: { onLogout: () => void }) {
   const { models, loading } = useModels();
   const [selectedModel, setSelectedModel] = useState('');
-  const [user, setUser] = useState<UserProfile | null>(null);
+  // 缓存优先：回访时头像/用户名立即渲染，后台再刷新最新资料
+  const [user, setUser] = useState<UserProfile | null>(() => readCachedProfile());
   const [showSettings, setShowSettings] = useState(false);
 
   const [sessions, setSessions] = useState<SessionEntry[]>([]);
@@ -72,9 +73,11 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
 
   const modelNames = Object.keys(models.llm || {});
 
-  // 加载用户资料
+  // 加载用户资料（后台刷新缓存值）
   useEffect(() => {
-    api.getProfile().then(setUser).catch(() => {});
+    api.getProfile()
+      .then((u) => { setUser(u); cacheProfile(u); })
+      .catch(() => {});
   }, []);
 
   const fetchSessions = useCallback(() => {
@@ -92,6 +95,17 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
       modelNames.includes('gemini-advanced') ? 'gemini-advanced' : modelNames[0],
     );
   }, [loading, selectedModel, modelNamesKey]);
+
+  // 缓存预选的模型可能在后台刷新后已下线：此时自动回退到默认模型，保证能正常发消息
+  useEffect(() => {
+    if (!selectedModel || modelNames.length === 0) return;
+    const isImageModel = Object.keys(models.image || {}).includes(selectedModel);
+    if (!modelNames.includes(selectedModel) && !isImageModel) {
+      setSelectedModel(
+        modelNames.includes('gemini-advanced') ? 'gemini-advanced' : modelNames[0],
+      );
+    }
+  }, [modelNamesKey]);
 
   const handleSessionSelect = useCallback((id: number) => {
     setCurrentSessionId(id);

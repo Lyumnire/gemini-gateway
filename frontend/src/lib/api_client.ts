@@ -88,8 +88,30 @@ export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+// 用户资料本地缓存：回访时立即渲染头像/用户名，后台再刷新
+const PROFILE_CACHE_KEY = 'gg-profile-cache';
+
+export function readCachedProfile(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as UserProfile;
+    return p && typeof p.id === 'number' ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+export function cacheProfile(p: UserProfile) {
+  try {
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p));
+  } catch { /* 配额满等情况静默失败 */ }
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  // 登出/换号时清掉用户资料缓存，避免下一个账号闪现上一个用户的头像
+  localStorage.removeItem(PROFILE_CACHE_KEY);
 }
 
 // ------------------------------------------------------------------
