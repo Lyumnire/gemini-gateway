@@ -256,6 +256,9 @@ cd frontend && npm install && npm run dev
 ./scripts/build-backend.sh
 ```
 
+> 🤖 **AI Agent / 新开发者**：接手前请先阅读 [`AGENTS.md`](AGENTS.md)，里面有完整的架构、
+> 文件职责、构建方式、环境变量、数据库 Schema、已知陷阱与开发约定。
+
 后端基于 [ntthanh2603/gemini-web-to-api](https://github.com/ntthanh2603/gemini-web-to-api)
 （MIT License）二次开发，基线 commit 见 `backend/SOURCE-VERSION`，感谢原作者。
 
