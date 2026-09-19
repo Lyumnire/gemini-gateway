@@ -152,24 +152,7 @@ const Bubble = memo(function Bubble({
             </div>
           )}
           {msg.content && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '80%' }}>
-              {msg.content && !msg.streaming && (
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  title="复制"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 26, height: 26, borderRadius: 8, border: 'none',
-                    background: 'transparent', color: '#94a3b8', cursor: 'pointer',
-                    flexShrink: 0, transition: 'color 0.15s', order: -1,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = '#475569'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
-                >
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                </button>
-              )}
+            <div style={{ maxWidth: '80%' }}>
               <div
                 style={{
                   background: '#e2e8f0', color: '#1e293b', borderRadius: '24px',
@@ -179,6 +162,28 @@ const Bubble = memo(function Bubble({
               >
                 {msg.content}
               </div>
+              {!msg.streaming && (
+                <div
+                  style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 4, opacity: 0.5, transition: 'opacity 0.15s' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    title="复制"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 28, height: 28, borderRadius: 8, border: 'none',
+                      background: 'transparent', color: '#64748b', cursor: 'pointer',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(148,163,184,0.15)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
