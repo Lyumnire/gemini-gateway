@@ -152,7 +152,7 @@ const Bubble = memo(function Bubble({
             </div>
           )}
           {msg.content && (
-            <div style={{ maxWidth: '80%' }}>
+            <div>
               <div
                 style={{
                   background: '#e2e8f0', color: '#1e293b', borderRadius: '24px',
