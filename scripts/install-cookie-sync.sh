@@ -31,33 +31,58 @@ echo "✓ 扩展已生成: $PWD/$EXT_DST"
 sed "s|__TOKEN__|${TOKEN}|g" cookie-sync/cookie-sync.html > cookie-sync/cookie-sync-local.html
 echo "✓ 手动推送页已生成: $PWD/cookie-sync/cookie-sync-local.html"
 
-# 3) LaunchAgent
+# 3) LaunchAgent：receiver 由看门脚本管理（单一管理路径）
+#    - receiver-monitor：每 60s 健康检查，挂了自动拉起（Token 从 .env 读取，无烘焙）
+#    - edge-extension：每 10min 检查推送心跳，停滞才唤醒扩展（健康态零打扰）
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-cat > "$PLIST_DST" <<EOF
+launchctl bootout gui/$(id -u)/com.geminigateway.cookie-sync >/dev/null 2>&1 || true
+rm -f "$HOME/Library/LaunchAgents/com.geminigateway.cookie-sync.plist"
+launchctl bootout gui/$(id -u)/com.gemini-gateway.receiver >/dev/null 2>&1 || true
+rm -f "$HOME/Library/LaunchAgents/com.gemini-gateway.receiver.plist"
+
+MONITOR_PLIST="$HOME/Library/LaunchAgents/com.gemini-gateway.receiver-monitor.plist"
+cat > "$MONITOR_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>${PLIST_NAME}</string>
+  <key>Label</key><string>com.gemini-gateway.receiver-monitor</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/python3</string>
-    <string>${PWD}/cookie-sync/receiver.py</string>
+    <string>/bin/zsh</string>
+    <string>${PWD}/cookie-sync/ensure-receiver.sh</string>
   </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>COOKIE_SYNC_TOKEN</key><string>${TOKEN}</string>
-    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
-  </dict>
+  <key>StartInterval</key><integer>60</integer>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${HOME}/Library/Logs/gemini-gateway-cookie-sync.log</string>
-  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/gemini-gateway-cookie-sync.err.log</string>
+  <key>StandardOutPath</key><string>/tmp/receiver-monitor.log</string>
+  <key>StandardErrorPath</key><string>/tmp/receiver-monitor.log</string>
 </dict>
 </plist>
 EOF
-launchctl unload "$PLIST_DST" >/dev/null 2>&1 || true
-launchctl load "$PLIST_DST"
+launchctl bootstrap gui/$(id -u) "$MONITOR_PLIST" >/dev/null 2>&1 || launchctl load "$MONITOR_PLIST"
+
+EDGE_PLIST="$HOME/Library/LaunchAgents/com.gemini-gateway.edge-extension.plist"
+if [ ! -f "$EDGE_PLIST" ]; then
+  cat > "$EDGE_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.gemini-gateway.edge-extension</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>${PWD}/cookie-sync/ensure-edge-extension.sh</string>
+  </array>
+  <key>StartInterval</key><integer>600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/edge-extension-monitor.log</string>
+  <key>StandardErrorPath</key><string>/tmp/edge-extension-monitor.log</string>
+</dict>
+</plist>
+EOF
+  launchctl bootstrap gui/$(id -u) "$EDGE_PLIST" >/dev/null 2>&1 || launchctl load "$EDGE_PLIST"
+fi
 sleep 2
 if curl -s -m 3 http://127.0.0.1:8799/health | grep -q '"ok"'; then
   echo "✓ 接收服务已运行: http://127.0.0.1:8799/health"

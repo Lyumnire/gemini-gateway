@@ -82,6 +82,22 @@ def write_backend_cookie_cache(psid: str, psidts: str) -> bool:
     return True
 
 
+HEARTBEAT_FILE = ROOT / "data" / "cookies" / ".last-push"
+
+
+def touch_push_heartbeat() -> None:
+    """每次成功收到推送都刷新心跳（无论值是否变化）。
+
+    值不变时缓存文件 mtime 不动，无法区分"Google 未轮换"与"推送链路已死"；
+    心跳文件只表达链路存活，供 ensure-edge-extension.sh 判断是否需要唤醒扩展。
+    """
+    try:
+        HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HEARTBEAT_FILE.write_text(str(int(time.time())))
+    except OSError:
+        pass
+
+
 def restart_backend() -> None:
     # 注意：docker restart 不会重新读取 .env（环境变量在容器创建时固化），
     # 必须用 compose force-recreate 才能让新配置生效
@@ -152,6 +168,7 @@ class Handler(BaseHTTPRequestHandler):
             write_env(new)
 
         cache_changed = write_backend_cookie_cache(psid, psidts)
+        touch_push_heartbeat()
         log(f"收到 Cookie 推送: psid={psid[:10]}… env变化={env_changed} 缓存变化={cache_changed}")
 
         self._json(200, {"ok": True, "changed": env_changed or cache_changed})

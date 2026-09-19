@@ -345,6 +345,11 @@ StreamGenerate 的每一行是完整 JSON chunk（累积文本）。连接中途
 ### 7. Cookie 自动同步扩展
 源码中的 Token 是 `__TOKEN__` 占位符，真实 Token 由 `install-cookie-sync.sh` 烘焙到
 `extension-dist/`（不入库）。如果手动改 Token，需重跑安装脚本。
+保活分三层：扩展 3 分钟 alarm 推送 → receiver（心跳文件 `.last-push`）→
+看门狗 `ensure-edge-extension.sh`（每 10 分钟检查心跳，停滞才开标签唤醒）。
+**信号陷阱**：不能用 `.env` mtime（只在 1PSID 变化时写）或缓存文件 mtime
+（值不变时跳写）判断链路存活——只有 `.last-push` 心跳代表推送链路健康。
+receiver 只由 `com.gemini-gateway.receiver-monitor` 单一 launchd 条目管理。
 
 ### 8. 浏览器自动化测试（IAB）
 Playwright 的 `press("Enter")` 和 `click()` 在 IAB 面板中可能超时（系统键盘焦点限制）。
