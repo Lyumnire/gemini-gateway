@@ -152,14 +152,33 @@ const Bubble = memo(function Bubble({
             </div>
           )}
           {msg.content && (
-            <div
-              style={{
-                background: '#e2e8f0', color: '#1e293b', borderRadius: '24px',
-                padding: '10px 20px', fontSize: '16px', lineHeight: 1.7,
-                wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-              }}
-            >
-              {msg.content}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '80%' }}>
+              {msg.content && !msg.streaming && (
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  title="复制"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 26, height: 26, borderRadius: 8, border: 'none',
+                    background: 'transparent', color: '#94a3b8', cursor: 'pointer',
+                    flexShrink: 0, transition: 'color 0.15s', order: -1,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#475569'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              )}
+              <div
+                style={{
+                  background: '#e2e8f0', color: '#1e293b', borderRadius: '24px',
+                  padding: '10px 20px', fontSize: '16px', lineHeight: 1.7,
+                  wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                }}
+              >
+                {msg.content}
+              </div>
             </div>
           )}
         </div>
@@ -894,7 +913,7 @@ export function ChatView({
                 key={m.id}
                 msg={m}
                 enableThinking={enableThinking}
-                onCopy={m.role === 'assistant' && m.content ? () => handleCopyMessage(m.content) : undefined}
+                onCopy={m.content ? () => handleCopyMessage(m.content) : undefined}
                 onRetry={m.role === 'assistant' && !streaming && m.content && !m.image && !m.research ? () => handleRetryMessage(m.id) : undefined}
                                 onDownloadReport={downloadReport}
                 downloadedReportId={downloadedReportId}

@@ -163,6 +163,7 @@ cd frontend && npm run dev
 | `GEMINI_MAX_RETRIES` | 上游请求重试次数 | 3 |
 | `GEMINI_TEMPORARY` | 无痕模式（不保存到官网历史） | false |
 | `GEMINI_MODEL_ALIASES` | 模型别名映射（name=token,...） | — |
+| `GEMINI_USER_AGENT` | 自定义上游 UA（对齐会话浏览器可降低误拒率） | Chrome/146 |
 | `GEMINI_DEBUG` | 调试模式（dump 生图请求/响应） | false |
 | `GATEWAY_JWT_SECRET` | JWT 签名密钥（留空自动生成随机值持久化到数据目录） | — |
 | `GATEWAY_JWT_EXPIRE_DAYS` | JWT 有效期（天） | 30 |
@@ -294,6 +295,7 @@ inner[2] = []interface{}{CID, RID, RCID, nil, nil, nil, nil, nil, nil, ""}
 - shadcn 风格组件在 `components/ui/`
 - 所有 API 调用通过 `lib/api_client.ts` 的 `api` 对象
 - 前端构建产物在 `frontend/dist/`（Caddy 从这里托管静态文件）
+- 消息气泡交互：用户和助手气泡均支持悬停复制（`Bubble` 组件 `onCopy`）；助手气泡另有重试/报告下载
 
 ### 后端
 
@@ -314,39 +316,50 @@ inner[2] = []interface{}{CID, RID, RCID, nil, nil, nil, nil, nil, nil, ""}
 
 ## 重要陷阱与已知问题
 
-### 1. proxy-image 下载大小限制
+### 1. 上游风控与 User-Agent
+Gemini 会话 Cookie 来自用户真实浏览器，网关请求的 UA 若过旧（如 Chrome/120）或与
+会话浏览器差异过大，会触发上游风控——正常问题也被误拒。UA 已抽象为
+`BrowserUserAgent` 变量（默认 Chrome/146），可用 `GEMINI_USER_AGENT` 环境变量覆盖。
+纯文本请求也必须携带 `hl/_reqid/rt/bl/f.sid` 查询参数（对齐真实网页端形态）。
+
+### 2. 长文本截断（checkStreamComplete）
+StreamGenerate 的每一行是完整 JSON chunk（累积文本）。连接中途被切断时，末行是
+残缺 JSON——若静默跳过会回退到较早 chunk（半截回答）。`checkStreamComplete` 校验
+末行必须为完整 JSON，失败则重试（`gemini_service.go`，单测见 gemini_service_test.go）。
+
+### 3. proxy-image 下载大小限制
 `io.ReadAll` 已加 25MB LimitReader，但重定向链中每一跳都会校验域名（白名单机制）。
 
-### 2. 生图超时
+### 4. 生图超时
 生图通常需要 1-3 分钟，超过 Cloudflare 免费版 100s 限制。
 解决方案：后端改为 SSE 流式响应 + 每 15 秒心跳注释保活。
 
-### 3. BuildPromptFromMessages 现状
+### 5. BuildPromptFromMessages 现状
 当前只取最后一条用户消息内容（不含 User:/Model: 前缀）。
 之前用 `User: ... Model: ...` 拼接全部历史会导致 Gemini 输出日语胡言乱语。
 
-### 4. WithTemporary 选项
+### 6. WithTemporary 选项
 `GenerateOption` 中的 `Temporary` 字段会强制该请求为临时会话（不进官网历史）。
 用于标题生成等内部辅助请求。注意：它会同时设置 `inner[45]=1` 和 `inner[67]=0`。
 
-### 5. Cookie 自动同步扩展
+### 7. Cookie 自动同步扩展
 源码中的 Token 是 `__TOKEN__` 占位符，真实 Token 由 `install-cookie-sync.sh` 烘焙到
 `extension-dist/`（不入库）。如果手动改 Token，需重跑安装脚本。
 
-### 6. 浏览器自动化测试（IAB）
+### 8. 浏览器自动化测试（IAB）
 Playwright 的 `press("Enter")` 和 `click()` 在 IAB 面板中可能超时（系统键盘焦点限制）。
 替代方案：`evaluate()` + `dispatchEvent(new KeyboardEvent(...))` 或 CUA 坐标点击。
 
-### 7. Docker 网络
+### 9. Docker 网络
 Docker 内部通信使用 `NO_PROXY` 豁免（防止 OrbStack 注入的系统代理把内网请求发给 Clash）。
 `.env` 中 `GATEWAY_PROXY_URL` 默认 `host.docker.internal:7890`（Docker Desktop / Linux），
 OrbStack 用户需改为 `host.orb.internal:7890`。
 
-### 8. 前端 PWA 缓存
+### 10. 前端 PWA 缓存
 Service Worker 会缓存前端资源。更新后用户可能看到旧版本，需强制刷新（Cmd+Shift+R）。
 前端版本 hash 在 `vite.config.ts` 中的 `BUILD_ID` 定义。
 
-### 9. 数据库迁移
+### 11. 数据库迁移
 `backend/src/internal/modules/auth/database.go` 中的 `migrate()` 函数使用
 `ALTER TABLE ... ADD COLUMN` 增量迁移（SQLite 不支持 `IF NOT EXISTS` 在 ALTER 中，
 靠 `Exec` 忽略 duplicate column 错误实现幂等）。
