@@ -97,3 +97,32 @@ func TestParseResponseHandlesBardErrorInfo(t *testing.T) {
 	}
 }
 
+
+func TestCheckStreamComplete(t *testing.T) {
+	completeBody := ")]}'\n[[\"wrb.fr\",null]]\n[[\"di\",59]]\n"
+	if err := checkStreamComplete(completeBody); err != nil {
+		t.Errorf("complete body should pass, got: %v", err)
+	}
+
+	truncatedBody := ")]}'\n[[\"wrb.fr\",null]]\n[[\"di\",5"
+	if err := checkStreamComplete(truncatedBody); err == nil {
+		t.Error("truncated body should fail")
+	}
+
+	// )]}' 与 JSON 同行也应通过
+	sameLineBody := ")]}'[[\"wrb.fr\",null]]\n"
+	if err := checkStreamComplete(sameLineBody); err != nil {
+		t.Errorf("same-line prefix body should pass, got: %v", err)
+	}
+
+	// 数字前缀格式
+	prefixedBody := ")]}'\n123[[\"wrb.fr\",null]]\n"
+	if err := checkStreamComplete(prefixedBody); err != nil {
+		t.Errorf("number-prefixed body should pass, got: %v", err)
+	}
+
+	// 空响应不判截断（交给 parseResponse 报错）
+	if err := checkStreamComplete(")]}'\n"); err != nil {
+		t.Errorf("empty body should pass through, got: %v", err)
+	}
+}

@@ -174,7 +174,7 @@ func (c *Client) refreshSessionToken() error {
 	// 1. Initial hit to google.com to get extra cookies (NID, etc)
 	tmpClient := req.NewClient().
 		SetTimeout(30 * time.Second).
-		SetUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		SetUserAgent(BrowserUserAgent)
 
 	resp1, err := tmpClient.R().Get("https://www.google.com/")
 	extraCookies := ""
@@ -208,7 +208,7 @@ func (c *Client) refreshSessionToken() error {
 		"Sec-Fetch-User":            "?1",
 		"Upgrade-Insecure-Requests": "1",
 		"X-Same-Domain":             "1",
-		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"User-Agent":                BrowserUserAgent,
 	}
 
 	hClient := &http.Client{
@@ -491,7 +491,7 @@ func (c *Client) RotateCookies() error {
 
 	req.Header.Set("Content-Type", "application/json")
 	// Google often blocks requests with default Go-http-client User-Agent
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", BrowserUserAgent)
 	req.Header.Set("Cookie", cookieStr)
 
 	c.log.Debug("Sending rotation request", zap.String("url", EndpointRotateCookies))
@@ -620,18 +620,18 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 	formValues.Set("f.req", string(outerJSON))
 	formBody := formValues.Encode()
 
+	// 查询参数与真实网页端保持一致，纯文本请求同样携带（此前仅文件上传时携带，
+	// 异常的请求形态会让上游风控更激进，导致正常问题被误拒）。
 	queryValues := url.Values{}
 	queryValues.Set("at", at)
-	if len(uploadedFiles) > 0 {
-		queryValues.Set("hl", language)
-		queryValues.Set("_reqid", fmt.Sprintf("%d", rand.Intn(90000)+10000))
-		queryValues.Set("rt", "c")
-		if buildLabel != "" {
-			queryValues.Set("bl", buildLabel)
-		}
-		if sessionID != "" {
-			queryValues.Set("f.sid", sessionID)
-		}
+	queryValues.Set("hl", language)
+	queryValues.Set("_reqid", fmt.Sprintf("%d", rand.Intn(90000)+10000))
+	queryValues.Set("rt", "c")
+	if buildLabel != "" {
+		queryValues.Set("bl", buildLabel)
+	}
+	if sessionID != "" {
+		queryValues.Set("f.sid", sessionID)
 	}
 	generateURL := EndpointGenerate + "?" + queryValues.Encode()
 
@@ -673,7 +673,7 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
 		httpReq.Header.Set("Origin", "https://gemini.google.com")
 		httpReq.Header.Set("Referer", "https://gemini.google.com/")
-		httpReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		httpReq.Header.Set("User-Agent", BrowserUserAgent)
 		httpReq.Header.Set("X-Same-Domain", "1")
 		if len(uploadedFiles) > 0 {
 			httpReq.Header.Set("x-goog-ext-525005358-jspb", fmt.Sprintf(`["%s",1]`, requestID))
@@ -744,6 +744,19 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 			continue
 		}
 		respBody := string(respBytes)
+
+		// 截断检测：StreamGenerate 的每一行都是一个完整的 JSON chunk。
+		// 若最后一个非空行无法解析，说明连接在流中途被切断（代理抖动/上游提前关闭）。
+		// 此时不能静默使用较早的 chunk（内容只有前半段），必须重试。
+		if err := checkStreamComplete(respBody); err != nil {
+			lastErr = err
+			c.log.Warn("Response stream truncated, will retry",
+				zap.Error(err),
+				zap.Int("body_bytes", len(respBytes)),
+				zap.Int("attempt", attempt),
+			)
+			continue
+		}
 
 		// 诊断：GEMINI_DEBUG=true 时保存生图原始响应（可能含用户对话内容，默认关闭）
 		if c.debugDumpEnabled && config.DownloadGeneratedImages {
@@ -846,7 +859,7 @@ func (c *Client) downloadGeneratedImage(ctx context.Context, rawURL, cookieHeade
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", BrowserUserAgent)
 	req.Header.Set("Referer", "https://gemini.google.com/")
 	if cookieHeader != "" {
 		req.Header.Set("Cookie", cookieHeader)
@@ -995,6 +1008,39 @@ func (c *Client) ListModelsIDs() []string {
 		ids = append(ids, m.ID)
 	}
 	return ids
+}
+
+// checkStreamComplete verifies the StreamGenerate body ends with a complete
+// JSON chunk line. A body whose final non-empty line is not valid JSON means
+// the HTTP stream was cut mid-chunk — the accumulated text in earlier chunks
+// is only a prefix of the real answer, so callers must retry instead of
+// silently returning half a response.
+func checkStreamComplete(body string) error {
+	lastLine := ""
+	for _, line := range strings.Split(body, "\n") {
+		// 与 parseResponse 的行处理严格一致：trim + 去掉 )]}' 安全前缀
+		trimmed := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), ")]}'"))
+		if trimmed != "" {
+			lastLine = trimmed
+		}
+	}
+	if lastLine == "" {
+		// 空响应交给 parseResponse 的错误路径处理
+		return nil
+	}
+	var probe []interface{}
+	if err := json.Unmarshal([]byte(lastLine), &probe); err != nil {
+		// 兼容 "NNN[[...]]" 数字前缀格式：去掉开头数字再试一次
+		trimmed := strings.TrimLeft(lastLine, "0123456789")
+		if trimmed != lastLine {
+			var probe2 []interface{}
+			if err2 := json.Unmarshal([]byte(trimmed), &probe2); err2 == nil {
+				return nil
+			}
+		}
+		return fmt.Errorf("stream truncated: last chunk is incomplete JSON (line %d bytes)", len(lastLine))
+	}
+	return nil
 }
 
 // parseResponse parses Gemini's response format
@@ -1475,6 +1521,18 @@ var DefaultHeaders = map[string]string{
 	"Content-Type":  "application/x-www-form-urlencoded;charset=utf-8",
 	"Origin":        "https://gemini.google.com",
 	"Referer":       "https://gemini.google.com/",
-	"User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	"User-Agent":    BrowserUserAgent,
 	"X-Same-Domain": "1",
 }
+
+// BrowserUserAgent is the UA used for all requests to gemini.google.com.
+// Configurable via GEMINI_USER_AGENT: the session cookies come from the
+// user's real browser, so a mismatched / outdated UA is a classic bot signal
+// that makes upstream risk control more aggressive (spurious refusals).
+// Default tracks a recent Chromium release.
+var BrowserUserAgent = func() string {
+	if ua := os.Getenv("GEMINI_USER_AGENT"); ua != "" {
+		return ua
+	}
+	return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+}()
