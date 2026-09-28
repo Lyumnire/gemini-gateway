@@ -782,6 +782,7 @@ func (s *OpenAIService) GenerateTitle(ctx context.Context, userMessage, assistan
 	response, err := s.client.GenerateContent(ctx, b.String(),
 		providers.WithModel(s.pickTitleModel()),
 		providers.WithTemporary(true),
+		providers.WithMaxAttempts(1), // fail fast：限流时不再重试，直接走 fallback 首条消息
 	)
 	if err != nil {
 		return "", err

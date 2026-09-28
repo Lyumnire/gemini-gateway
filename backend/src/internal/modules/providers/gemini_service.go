@@ -636,6 +636,9 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 	generateURL := EndpointGenerate + "?" + queryValues.Encode()
 
 	maxAttempts := c.maxRetries
+	if config.MaxAttempts > 0 {
+		maxAttempts = config.MaxAttempts // 单请求覆盖（标题生成用1，避免与聊天抢配额）
+	}
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}

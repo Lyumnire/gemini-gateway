@@ -25,7 +25,7 @@ ROOT = HOME / "Projects" / "gemini-gateway"
 ENV_FILE = ROOT / ".env"
 LOG_FILE = HOME / "Library" / "Logs" / "gemini-gateway-cookie-sync.log"
 TOKEN = os.environ.get("COOKIE_SYNC_TOKEN", "")
-BACKEND_CONTAINER = "gg-gemini-api"
+BACKEND_CONTAINER = "gemini-api"
 DOCKER = "/usr/local/bin/docker"
 LISTEN_PORT = 8799
 

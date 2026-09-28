@@ -100,6 +100,7 @@ type GenerateConfig struct {
 	DownloadGeneratedImages bool
 	Metadata                *SessionMetadata // 对话上下文元数据（cid/rid/rcid）
 	Temporary               bool             // 临时会话：不进入 gemini.google.com 历史记录
+	MaxAttempts             int              // 0 = 使用全局 maxRetries；标题生成设为 1 避免与聊天抢配额
 }
 
 // WithTemporary forces this single request to run as a temporary chat
@@ -108,6 +109,15 @@ type GenerateConfig struct {
 func WithTemporary(temporary bool) GenerateOption {
 	return func(c *GenerateConfig) {
 		c.Temporary = temporary
+	}
+}
+
+// WithMaxAttempts overrides the retry count for this single request.
+// 1 means fail fast — used by title generation so a rate-limited session
+// doesn't burn chat's quota with stacked retries.
+func WithMaxAttempts(n int) GenerateOption {
+	return func(c *GenerateConfig) {
+		c.MaxAttempts = n
 	}
 }
 
