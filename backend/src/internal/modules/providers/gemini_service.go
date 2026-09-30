@@ -39,8 +39,9 @@ type Client struct {
 	buildLabel   string
 	sessionID    string
 	language     string
-	mu           sync.RWMutex // protects: at, healthy, cookieHeader, pushID, buildLabel, sessionID, language
+	mu           sync.RWMutex // protects: at, healthy, cookieHeader, pushID, buildLabel, sessionID, language, lastSessionRefresh
 	healthy      bool
+	lastSessionRefresh time.Time // 上次成功刷新 at token 的时间，用于自动刷新降频
 	log          *zap.Logger
 
 	autoRefresh      bool
@@ -328,6 +329,7 @@ func (c *Client) refreshSessionToken() error {
 	c.sessionID = sessionID
 	c.language = language
 	c.healthy = true
+	c.lastSessionRefresh = time.Now()
 	c.mu.Unlock()
 
 	// Update dynamic models from the same initialization body
@@ -407,12 +409,25 @@ func (c *Client) startAutoRefresh() {
 	ticker := time.NewTicker(c.refreshInterval)
 	defer ticker.Stop()
 
+	keepaliveInterval := 5 * time.Minute
+
 	for {
 		select {
 		case <-ticker.C:
 			// 被动检查缓存文件是否有新 cookie（由浏览器扩展推送）
 			if loaded := c.tryLoadCachedPSIDTS(); loaded {
 				c.log.Info("Refreshed session from cache file (extension push)")
+				continue
+			}
+
+			// 降频保活：unhealthy 立即刷新（恢复路径）；healthy 时距上次成功
+			// 刷新 ≥5 分钟才刷新。每分钟两次请求的自动化形态本身会触发
+			// Google 滥用检测（/sorry 挑战页），降频后请求量降 ~80%。
+			c.mu.RLock()
+			isHealthy := c.healthy
+			lastRefresh := c.lastSessionRefresh
+			c.mu.RUnlock()
+			if isHealthy && time.Since(lastRefresh) < keepaliveInterval {
 				continue
 			}
 
@@ -571,8 +586,6 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 	}
 	at := c.at
 	cookieHdr := c.cookieHeader
-	buildLabel := c.buildLabel
-	sessionID := c.sessionID
 	language := c.language
 	c.mu.RUnlock()
 	if language == "" {
@@ -614,27 +627,6 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 	outer := []interface{}{nil, string(innerJSON)}
 	outerJSON, _ := json.Marshal(outer)
 
-	// Encode form body manually to have full control over the request
-	formValues := url.Values{}
-	formValues.Set("at", at)
-	formValues.Set("f.req", string(outerJSON))
-	formBody := formValues.Encode()
-
-	// 查询参数与真实网页端保持一致，纯文本请求同样携带（此前仅文件上传时携带，
-	// 异常的请求形态会让上游风控更激进，导致正常问题被误拒）。
-	queryValues := url.Values{}
-	queryValues.Set("at", at)
-	queryValues.Set("hl", language)
-	queryValues.Set("_reqid", fmt.Sprintf("%d", rand.Intn(90000)+10000))
-	queryValues.Set("rt", "c")
-	if buildLabel != "" {
-		queryValues.Set("bl", buildLabel)
-	}
-	if sessionID != "" {
-		queryValues.Set("f.sid", sessionID)
-	}
-	generateURL := EndpointGenerate + "?" + queryValues.Encode()
-
 	maxAttempts := c.maxRetries
 	if config.MaxAttempts > 0 {
 		maxAttempts = config.MaxAttempts // 单请求覆盖（标题生成用1，避免与聊天抢配额）
@@ -659,12 +651,58 @@ func (c *Client) GenerateContent(ctx context.Context, prompt string, options ...
 				zap.Duration("backoff", backoff),
 				zap.Error(lastErr),
 			)
+			// 会话类错误（BardErrorInfo / cookies invalid）：旧 at token 已失效，
+			// 盲目重放没有意义。退避期间刷新一次 session token，下一轮用新 token 重试。
+			if isSessionError(lastErr) {
+				if refErr := c.refreshSessionToken(); refErr != nil {
+					c.log.Warn("Token refresh before retry failed",
+						zap.Error(refErr),
+						zap.Int("attempt", attempt),
+					)
+				} else {
+					c.log.Info("Session token refreshed before retry", zap.Int("attempt", attempt))
+				}
+			}
 			select {
 			case <-time.After(backoff):
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
 		}
+
+		// 每轮重建请求参数：token 刷新后 c.at/c.cookieHeader 会更新，
+		// 重试必须使用当前值而非循环外捕获的旧值。
+		c.mu.RLock()
+		at := c.at
+		cookieHdr := c.cookieHeader
+		buildLabel := c.buildLabel
+		sessionID := c.sessionID
+		c.mu.RUnlock()
+		if at == "" {
+			lastErr = errors.New("client not initialized (no session token)")
+			continue
+		}
+
+		// Encode form body manually to have full control over the request
+		formValues := url.Values{}
+		formValues.Set("at", at)
+		formValues.Set("f.req", string(outerJSON))
+		formBody := formValues.Encode()
+
+		// 查询参数与真实网页端保持一致，纯文本请求同样携带（此前仅文件上传时携带，
+		// 异常的请求形态会让上游风控更激进，导致正常问题被误拒）。
+		queryValues := url.Values{}
+		queryValues.Set("at", at)
+		queryValues.Set("hl", language)
+		queryValues.Set("_reqid", fmt.Sprintf("%d", rand.Intn(90000)+10000))
+		queryValues.Set("rt", "c")
+		if buildLabel != "" {
+			queryValues.Set("bl", buildLabel)
+		}
+		if sessionID != "" {
+			queryValues.Set("f.sid", sessionID)
+		}
+		generateURL := EndpointGenerate + "?" + queryValues.Encode()
 
 		httpStart := time.Now()
 
@@ -1170,6 +1208,20 @@ func (c *Client) parseResponse(text string) (*Response, error) {
 	return nil, fmt.Errorf("failed to parse response. Sample: %s", sample)
 }
 
+// isSessionError reports whether the upstream failure is session-related
+// (stale at token / expired cookies), meaning a refreshSessionToken() call
+// before the next retry has a chance of recovering instead of blindly
+// replaying the same dead token.
+func isSessionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "BardErrorInfo") ||
+		strings.Contains(msg, "cookies invalid") ||
+		strings.Contains(msg, "Sign in")
+}
+
 // extractBardError recursively searches for BardErrorInfo and extracts codes/messages
 func extractBardError(item []interface{}) string {
 	var codes []int
@@ -1207,6 +1259,13 @@ func extractBardError(item []interface{}) string {
 
 	if foundError {
 		if len(codes) > 0 {
+			// 1060 = LOCATION_REJECTED：Google 按出口 IP/地区直接拒绝（社区案例：
+			// Cloudflare/数据中心 IP 普遍触发）。给出可行动指引而非模糊猜测。
+			for _, code := range codes {
+				if code == 1060 {
+					return "Gemini 拒绝了请求（LOCATION_REJECTED, code 1060）：当前代理出口 IP 被 Google 风控拦截。请在 Clash Verge 切换到非 Cloudflare 节点，后端会在约 1 分钟内自动恢复。"
+				}
+			}
 			return fmt.Sprintf("Google Gemini Web returned an error (BardErrorInfo code %v). This usually indicates session expiration, rate limits, context window limits, or bot protection/CAPTCHA block.", codes)
 		}
 		return "Google Gemini Web returned a BardErrorInfo block."
